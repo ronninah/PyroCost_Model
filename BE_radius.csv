@@ -1,0 +1,6 @@
+
+Parameter BE_radius(*,*) km one-way break-even distance (by mode at plant) /
+'j1'.'tractor' 27.3105670802569, 
+'j1'.'truck' 45.8462631987298, 
+'j2'.'tractor' 15.8283922867621, 
+'j2'.'truck' 26.4570048921499 /;

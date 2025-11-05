@@ -1,0 +1,129 @@
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 08/26/25 10:22:14 Page 1
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+C o m p i l a t i o n
+
+
+   1  *-------------  COST-EFFICIENT PYROLYSIS / BIOCHAR PLANT (MILP)  -------------
+   2  * Nahid Hasan Ronnie
+   3  * Distance between farms and candidate plant sites enters via dist(i,j) [km]
+   4  * Transport tonne-km = backhaul * sum_i dist(i,j) * x(i,j)
+   5  *-----------------------------------------------------------------------------
+   6   
+   7  * -------- TECHNOLOGY: Pyro-ClinX 150 (single unit) --------
+   8   
+      Minimal distance–cost siting (single plant on 1D corridor)
+      - X: plant location (km). di(i) >= |X - pos_i(i)| via two inequalities.
+      - Must meet DemandChar > 0 so solution is never zero.
+      - Objective: transport + simple handling + annualized CAPEX.
+  15   
+  16  Set i "farms" / i1*i5 / ;
+  17   
+  18  * --- Data (EDIT) ---
+  19  Parameter
+  20      pos_i(i)       "farm position (km)"
+  21      Supply(i)      "available as-received feed (t/yr)"
+  22      Moisture(i)    "as-received moisture fraction";
+  23   
+  24  pos_i("i1")=10 ; pos_i("i2")=35 ; pos_i("i3")=60 ; pos_i("i4")=85 ; pos_i("i5")=110 ;
+  25  Supply("i1")=800 ; Supply("i2")=900 ; Supply("i3")=700 ; Supply("i4")=600 ; Supply("i5")=500 ;
+  26  Moisture(i) = 0.05 ;
+  27   
+  28  Scalar
+  29      DemandChar      "required biochar (t/yr)"               / 500 /
+  30      YieldChar       "t char per t dry feed"                 / 0.25 /
+  31      backhaul        "t-km multiplier (1 one-way, 2 round)"  / 2    /
+  32      CTrans          "EUR per t-km"                          / 0.12 /
+  33      Wage            "EUR per labor-hour"                    / 35   /
+  34      LaborPerTon     "labor hours per t feed"                / 0.2  /
+  35      VarOMperTon     "variable O&M per t feed (EUR/t)"       / 0    /
+  36      r               "discount rate"                         / 0.08 /
+  37      life            "economic lifetime (y)"                 / 15   /
+  38      CRF             "capital recovery factor"
+  39      CapexPlant      "EUR plant CAPEX"                       / 5000000 /
+  40      FixOMFrac       "fixed O&M as frac of CAPEX (1/y)"      / 0.05 / ;
+  41   
+  42  CRF = r*power(1+r,life)/(power(1+r,life)-1) ;
+  43   
+  44  Positive Variable
+  45      x(i)        "flow from farm i (t/yr ASR)"
+  46      di(i)       "distance to farm i (km)"
+  47      FeedASR     "ASR feed total (t/yr)"
+  48      FeedDry     "DRY feed total (t/yr)"
+  49      Char        "biochar (t/yr)"
+  50      Tkm         "tonne-km (t-km/yr)";
+  51   
+  52  Variable
+  53      X           "plant location (km)"
+  54      TotalCost   "annual cost (EUR/yr)";
+  55   
+  56  Scalar Xmin /0/, Xmax /200/; X.lo = Xmin ; X.up = Xmax ;
+****                                    $148          $148
+**** 148  Dimension different - The symbol is referenced with more/less
+****         indices as declared
+  57   
+  58  Equation
+  59      SupplyLim(i)
+  60      FeedAgg
+  61      FeedDryDef
+  62      CharDef
+  63      DistLB1(i)      "di(i) >= X - pos_i(i)"
+  64      DistLB2(i)      "di(i) >= pos_i(i) - X"
+  65      TkmDef
+  66      DemandReq
+  67      CostDef ;
+  68   
+  69  SupplyLim(i)..   x(i) =L= Supply(i) ;
+  70  FeedAgg..        FeedASR =E= sum(i, x(i)) ;
+  71  FeedDryDef..     FeedDry =E= sum(i, x(i)*(1 - Moisture(i))) ;
+  72  CharDef..        Char    =E= YieldChar * FeedDry ;
+  73   
+  74  DistLB1(i)..     di(i) =G= X - pos_i(i) ;
+****                               $148
+**** 148  Dimension different - The symbol is referenced with more/less
+****         indices as declared
+  75  DistLB2(i)..     di(i) =G= pos_i(i) - X ;
+****                                          $148
+**** 148  Dimension different - The symbol is referenced with more/less
+****         indices as declared
+  76   
+  77  TkmDef..         Tkm =E= backhaul * sum(i, di(i) * x(i)) ;
+  78   
+  79  DemandReq..      Char =G= DemandChar ;
+  80   
+  81  CostDef..
+  82    TotalCost =E=
+  83        CRF*CapexPlant + FixOMFrac*CapexPlant
+  84      + CTrans*Tkm
+  85      + Wage*LaborPerTon*FeedASR
+  86      + VarOMperTon*FeedASR ;
+  87   
+  88  Model DistCost / all / ;
+  89  Solve DistCost using LP minimizing TotalCost ;
+****                                               $257
+**** 257  Solve statement not checked because of previous errors
+  90   
+  91  Display X.l, TotalCost.l, Char.l, FeedASR.l, FeedDry.l, Tkm.l, x.l, di.l ;
+****                         $141    $141       $141       $141   $141       $141
+**** 141  Symbol declared but no values have been assigned. Check for missing
+****         data definition, assignment, data loading or implicit assignment
+****         via a solve statement. Suppress with $onImplicitAssign.
+****         A wild shot: You may have spurious commas in the explanatory
+****         text of a declaration. Check symbol reference list.
+
+**** 11 ERROR(S)   0 WARNING(S)
+
+
+COMPILATION TIME     =        0.015 SECONDS      3 MB  49.6.1 55d34574 WEX-WEI
+
+
+USER: Large MUD - 20 User License                    S231215|0002AN-WIN
+      Leibniz-Zentrum fuer Agrarlandschaftsforschung (ZALF) e. V.DC8734
+      License for teaching and research at degree granting institutions
+
+
+**** FILE SUMMARY
+
+Input      C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\DistCost_Base.gms
+Output     C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\DistCost_Base.lst
+
+**** USER ERROR(S) ENCOUNTERED

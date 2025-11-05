@@ -1,0 +1,175 @@
+{
+	"modelTitle":	"G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m",
+	"inputSymbols":	{
+	},
+	"outputSymbols":	{
+		"flow":	{
+			"alias":	"t/yr shipped",
+			"symtype":	"parameter",
+			"headers":	{
+				"i":	{
+					"type":	"string",
+					"alias":	"farms"
+				},
+				"j":	{
+					"type":	"string",
+					"alias":	"plants"
+				},
+				"m":	{
+					"type":	"string",
+					"alias":	"modes"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"t/yr shipped"
+				}
+			}
+		},
+		"flowij":	{
+			"alias":	"t/yr shipped (sum over modes)",
+			"symtype":	"parameter",
+			"headers":	{
+				"i":	{
+					"type":	"string",
+					"alias":	"farms"
+				},
+				"j":	{
+					"type":	"string",
+					"alias":	"plants"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"t/yr shipped (sum over modes)"
+				}
+			}
+		},
+		"sitegm":	{
+			"alias":	"€/yr GM per plant",
+			"symtype":	"parameter",
+			"headers":	{
+				"j":	{
+					"type":	"string",
+					"alias":	"plants"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"€/yr GM per plant"
+				}
+			}
+		},
+		"_scalars_out":	{
+			"alias":	"Output Scalars",
+			"symnames":	["totalgm"],
+			"symtext":	["€/yr total GM"],
+			"symtypes":	["parameter"],
+			"headers":	{
+				"scalar":	{
+					"type":	"string",
+					"alias":	"Scalar Name"
+				},
+				"description":	{
+					"type":	"string",
+					"alias":	"Scalar Description"
+				},
+				"value":	{
+					"type":	"string",
+					"alias":	"Scalar Value"
+				}
+			}
+		},
+		"miro_dist":	{
+			"alias":	"km distance (copy of dist)",
+			"symtype":	"parameter",
+			"headers":	{
+				"i":	{
+					"type":	"string",
+					"alias":	"farms"
+				},
+				"j":	{
+					"type":	"string",
+					"alias":	"plants"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"km distance (copy of dist)"
+				}
+			}
+		},
+		"uclane":	{
+			"alias":	"€/t unit cost per lane (copy of UC_lane)",
+			"symtype":	"parameter",
+			"headers":	{
+				"i":	{
+					"type":	"string",
+					"alias":	"farms"
+				},
+				"j":	{
+					"type":	"string",
+					"alias":	"plants"
+				},
+				"m":	{
+					"type":	"string",
+					"alias":	"modes"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"€/t unit cost per lane (copy of UC_lane)"
+				}
+			}
+		},
+		"umlane":	{
+			"alias":	"€/t unit margin per lane (copy of UM_lane)",
+			"symtype":	"parameter",
+			"headers":	{
+				"i":	{
+					"type":	"string",
+					"alias":	"farms"
+				},
+				"j":	{
+					"type":	"string",
+					"alias":	"plants"
+				},
+				"m":	{
+					"type":	"string",
+					"alias":	"modes"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"€/t unit margin per lane (copy of UM_lane)"
+				}
+			}
+		},
+		"berad":	{
+			"alias":	"km break-even radius (one-way; copy of BE_radius)",
+			"symtype":	"parameter",
+			"headers":	{
+				"j":	{
+					"type":	"string",
+					"alias":	"plants"
+				},
+				"m":	{
+					"type":	"string",
+					"alias":	"modes"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"km break-even radius (one-way; copy of BE_radius)"
+				}
+			}
+		},
+		"pprice":	{
+			"alias":	"€/t chip price (copy of P_chip for charts)",
+			"symtype":	"parameter",
+			"headers":	{
+				"j":	{
+					"type":	"string",
+					"alias":	"plants"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"€/t chip price (copy of P_chip for charts)"
+				}
+			}
+		}
+	}
+}

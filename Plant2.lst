@@ -1,0 +1,199 @@
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 10/20/25 14:41:15 Page 1
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+C o m p i l a t i o n
+
+
+   1  * Mode C (hybrid): roadside chip price + plant computes haul to gate (single plant)
+   2   
+   3  Set p / PlantA /
+   4      e / elec, heat / ;
+   5   
+   6  * --- Technical and price inputs (edit as needed) ---
+   7  Parameter
+   8     Qin_DM_h(p)            "t DM/h"
+   9     Y_char(p)              "t char per t DM"
+  10     E_net_kW(p,e)          "kW net export"
+  11     Hop_year               "h/year"
+  12     P_char                 "EUR/t"
+  13     P_el                   "EUR/kWh"
+  14     P_heat                 "EUR/kWh_th"
+  15     n_ops(p)               "operators/shift"
+  16     w_hour                 "EUR/h"
+  17     OM_hour(p)             "EUR/h"
+  18     P_buy                  "EUR/kWh"
+  19     E_buy_kWh(p)           "kWh/h" ;
+  20   
+  21  Qin_DM_h('PlantA')        = 0.299 ;
+  22  Y_char('PlantA')          = 0.25  ;
+  23  E_net_kW('PlantA','elec') = 130   ;
+  24  E_net_kW('PlantA','heat') = 200   ;
+  25  Hop_year                  = 8000  ;
+  26   
+  27  P_char                    = 500   ;
+  28  P_el                      = 0.11  ;
+  29  P_heat                    = 0.06  ;
+  30   
+  31  n_ops('PlantA')           = 1     ;
+  32  w_hour                    = 28    ;
+  33  OM_hour('PlantA')         = 30    ;
+  34  P_buy                     = 0.28  ;
+  35  E_buy_kWh('PlantA')       = 0     ;
+  36   
+  37  * --- Mode C haul inputs and roadside price (key differences vs Mode A) ---
+  38  Scalar
+  39     P_chipDM_roadside      "EUR/t DM at roadside (no long-haul)"
+  40     d_feed_km              "one-way km roadside -> plant"
+  41     r_truck_eur_per_km     "EUR per truck-km"
+  42     payload_chip_tFM       "truck payload, t fresh chips"
+  43     MC_chip                "chip moisture (fraction, e.g. 0.30)" ;
+  44   
+  45  P_chipDM_roadside  = 65     ;
+  46  d_feed_km          = 40     ;
+  47  r_truck_eur_per_km = 2.0    ;
+  48  payload_chip_tFM   = 24     ;
+  49  MC_chip            = 0.30   ;
+  50   
+  51  * --- Derived haul cost and delivered price (EUR/t DM) ---
+  52  Scalar
+  53     c_haul_per_tFM   "EUR/t FM"
+  54     c_haul_per_tDM   "EUR/t DM"
+  55     P_chipDM_deliv   "EUR/t DM delivered to gate" ;
+  56   
+  57  c_haul_per_tFM = (2*d_feed_km*r_truck_eur_per_km) / payload_chip_tFM ;
+  58  c_haul_per_tDM = c_haul_per_tFM / (1 - MC_chip) ;
+  59  P_chipDM_deliv = P_chipDM_roadside + c_haul_per_tDM ;
+  60   
+  61  * --- Outputs (computed) ---
+  62  Parameter
+  63     Qchar_h(p)      "t/h"
+  64     Rchar(p)        "EUR/h"
+  65     Rel(p)          "EUR/h"
+  66     Rheat(p)        "EUR/h"
+  67     Rev(p)          "EUR/h"
+  68     Cfs(p)          "EUR/h"
+  69     Clab(p)         "EUR/h"
+  70     Com(p)          "EUR/h"
+  71     Cbuy(p)         "EUR/h"
+  72     GM(p)           "EUR/h"
+  73     GM_per_tDM(p)   "EUR/t DM"
+  74     GM_per_year(p)  "EUR/year" ;
+  75   
+  76  Qchar_h(p)    = Y_char(p) * Qin_DM_h(p) ;
+  77  Rchar(p)      = P_char * Qchar_h(p) ;
+  78  Rel(p)        = P_el   * E_net_kW(p,'elec') ;
+  79  Rheat(p)      = P_heat * E_net_kW(p,'heat') ;
+  80  Rev(p)        = Rchar(p) + Rel(p) + Rheat(p) ;
+  81   
+  82  Cfs(p)        = Qin_DM_h(p) * P_chipDM_deliv ;
+  83  Clab(p)       = n_ops(p) * w_hour ;
+  84  Com(p)        = OM_hour(p) ;
+  85  Cbuy(p)       = P_buy * E_buy_kWh(p) ;
+  86   
+  87  GM(p)         = Rev(p) - (Cfs(p) + Clab(p) + Com(p) + Cbuy(p)) ;
+  88  GM_per_tDM(p) = GM(p) / Qin_DM_h(p) ;
+  89  GM_per_year(p)= GM(p) * Hop_year ;
+  90   
+  91  Display
+  92    P_chipDM_roadside, d_feed_km, r_truck_eur_per_km, payload_chip_tFM, MC_chip,
+  93    c_haul_per_tFM, c_haul_per_tDM, P_chipDM_deliv ;
+  94   
+  95  Display Rev, Cfs, Clab, Com, Cbuy, GM, GM_per_tDM, GM_per_year ;
+  96   
+  97  * --- Break-even metrics ---
+  98  Scalar Pchar_BE "EUR/t", Pchip_roadside_BE "EUR/t DM roadside" ;
+  99   
+ 100  Pchar_BE = ( Cfs('PlantA') + Clab('PlantA') + Com('PlantA') + Cbuy('PlantA')
+ 101               - ( Rel('PlantA') + Rheat('PlantA') ) )
+ 102             / ( Y_char('PlantA') * Qin_DM_h('PlantA') ) ;
+ 103   
+ 104  * roadside break-even = delivered BE minus haul component
+ 105  Pchip_roadside_BE = ( Rchar('PlantA') + Rel('PlantA') + Rheat('PlantA')
+ 106                        - ( Clab('PlantA') + Com('PlantA') + Cbuy('PlantA') ) )
+ 107                      / Qin_DM_h('PlantA')  - c_haul_per_tDM ;
+ 108   
+ 109  Display Pchar_BE, Pchip_roadside_BE ;
+ 110   
+ 111  * --- CSV export (optional) ---
+ 112  File f /plant_modeC_kpi.csv/ ; put f ;
+ 113  put 'plant,mode,P_char,P_chipDM_roadside,P_chipDM_deliv,d_km,Rev,Cfs,Clab,Com,Cbuy,GM,GM_per_tDM,GM_per_year,Pchar_BE,Pchip_roadside_BE' / ;
+ 114  put 'PlantA',',','ModeC',',', P_char:0:2, ',', P_chipDM_roadside:0:2, ',', P_chipDM_deliv:0:2, ',', d_feed_km:0:0, ',',
+ 115      Rev('PlantA'):0:2, ',', Cfs('PlantA'):0:2, ',', Clab('PlantA'):0:2, ',', Com('PlantA'):0:2, ',', Cbuy('PlantA'):0:2, ',',
+ 116      GM('PlantA'):0:2, ',', GM_per_tDM('PlantA'):0:2, ',', GM_per_year('PlantA'):0:0, ',', Pchar_BE:0:2, ',', Pchip_roadside_BE:0:2 / ;
+ 117  putclose f ;
+
+
+COMPILATION TIME     =        0.000 SECONDS      3 MB  49.6.1 55d34574 WEX-WEI
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 10/20/25 14:41:15 Page 2
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+E x e c u t i o n
+
+
+----     92 PARAMETER P_chipDM_roadside    =       65.000  EUR/t DM at roadside (no long-haul)
+            PARAMETER d_feed_km            =       40.000  one-way km roadside -> plant
+            PARAMETER r_truck_eur_per_km   =        2.000  EUR per truck-km
+            PARAMETER payload_chip_tFM     =       24.000  truck payload, t fresh chips
+            PARAMETER MC_chip              =        0.300  chip moisture (fraction, e.g. 0.30)
+            PARAMETER c_haul_per_tFM       =        6.667  EUR/t FM
+            PARAMETER c_haul_per_tDM       =        9.524  EUR/t DM
+            PARAMETER P_chipDM_deliv       =       74.524  EUR/t DM delivered to gate
+
+----     95 PARAMETER Rev  EUR/h
+
+PlantA 63.675
+
+
+----     95 PARAMETER Cfs  EUR/h
+
+PlantA 22.283
+
+
+----     95 PARAMETER Clab  EUR/h
+
+PlantA 28.000
+
+
+----     95 PARAMETER Com  EUR/h
+
+PlantA 30.000
+
+
+----     95 PARAMETER Cbuy  EUR/h
+
+                      ( ALL       0.000 )
+
+
+----     95 PARAMETER GM  EUR/h
+
+PlantA -16.608
+
+
+----     95 PARAMETER GM_per_tDM  EUR/t DM
+
+PlantA -55.544
+
+
+----     95 PARAMETER GM_per_year  EUR/year
+
+PlantA -132860.952
+
+
+----    109 PARAMETER Pchar_BE             =      722.176  EUR/t
+            PARAMETER Pchip_roadside_BE    =        9.456  EUR/t DM roadside
+
+**** REPORT FILE SUMMARY
+
+f C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\plant_modeC_kpi.csv
+
+
+EXECUTION TIME       =        0.000 SECONDS      4 MB  49.6.1 55d34574 WEX-WEI
+
+
+USER: Large MUD - 20 User License                    S231215|0002AN-WIN
+      Leibniz-Zentrum fuer Agrarlandschaftsforschung (ZALF) e. V.DC8734
+      License for teaching and research at degree granting institutions
+
+
+**** FILE SUMMARY
+
+Input      C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Plant2.gms
+Output     C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Plant2.lst

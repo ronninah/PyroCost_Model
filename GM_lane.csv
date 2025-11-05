@@ -1,0 +1,5 @@
+
+Parameter GM_lane(*,*,*) '€/yr gross margin by lane' /
+'i1'.'j1'.'truck' 7072.75367259022, 
+'i2'.'j1'.'truck' 147.367453980445, 
+'i3'.'j2'.'truck' 132.190992497778 /;

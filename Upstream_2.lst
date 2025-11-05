@@ -1,0 +1,586 @@
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/17/25 10:25:19 Page 1
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+C o m p i l a t i o n
+
+
+   1  *======================================================================*
+   2  *  Pyrolysis Upstream: Chipping + Handling + Transport (Farm -> Plant) *
+   3  *  KTBL-driven cost derivations + Four modeling options (A..D)         *
+   4  *  OptionMode: 1=A MinCost, 2=B Profit, 3=C Profit+Penalty, 4=D Contract*
+   5  *======================================================================*
+   6   
+      Option A — Cost minimization with required tonnages
+        A(eq): sum_jm x = Supply(i)  (ship all supply)
+        A(le): sum_jm x <= Supply(i) (ship up to supply) AND DemandMin(j) >= LB
+       
+      Option B — Profit maximization (set P_chip(j) > 0)
+       
+      Option C — Profit maximization with penalty for Unused(i)
+       
+      Option D — Profit maximization with DemandCommit(j) >= Contract(j)
+       
+      All options produce a location-aware report:
+      - UC_lane(i,j,m), UM_lane(i,j,m), GM_site(j), GM_farm(i), GM_mode(m)
+      - BE_price(i,j,m), BE_radius(j,m)
+  22   
+  23  *-----------------------------*
+  24  * Choose modeling option here *
+  25  *-----------------------------*
+  26  Scalar OptionMode "1=A | 2=B | 3=C | 4=D" / 2 /;
+  27   
+  28  * For Option A only: choose equality (ship all) vs inequality (ship up to)
+  29  Scalar UseSupplyEq "1: ship all supply (A-eq); 0: allow <= (A-le)" / 1 /;
+  30   
+  31  *------------------*
+  32  * Sets & data      *
+  33  *------------------*
+  34  Sets
+  35      i   "farms"       / i1*i3 /
+  36      j   "plants"      / j1*j2 /
+  37      m   "modes"       / tractor, truck / ;
+  38  Alias (i,ii);
+  39   
+  40  Table dist(i,j)  "km"
+  41             j1   j2
+  42  i1         20   60
+  43  i2         45   30
+  44  i3         80   25 ;
+  45   
+  46  Parameter Supply(i) "as-received t/yr";
+  47  Supply('i1') = 1200 ;
+  48  Supply('i2') =  900 ;
+  49  Supply('i3') =  700 ;
+  50   
+  51  Scalar Backhaul "1=one-way, 2=round-trip" / 2 / ;
+  52   
+  53  *------------------------------*
+  54  * KTBL-derived unit costs      *
+  55  *------------------------------*
+  56  Scalar
+  57    Tractor_eur_per_h      "€/h Standardtraktor 120 kW (KTBL)"          / 41.84 /
+  58    PTOChipper_eur_per_h   "€/h Holzhacker PTO 25 m3/h (KTBL)"          / 22.63 /
+  59    Body_Tractor_eur_per_t "€/t Häckselaufbau 22 m3 (KTBL)"             / 0.82  /
+  60    SemiTrailer_eur_per_t  "€/t Sattelzugauflieger 34 t (KTBL)"         / 0.89  /
+  61    Bucket_eur_per_t       "€/t Leichtgutschaufel 1.5 m3 (KTBL)"        / 0.39  /
+  62    FrontLoader_eur_per_h  "€/h Traktorfrontlader (KTBL)"               / 8.68  /
+  63    Tractor_speed_kmh      "km/h (KTBL: 40 km/h)"                       / 40    /
+  64    Chipper_m3_per_h       "m3/h (nameplate)"                           / 25    /;
+  65   
+  66  Scalar
+  67    BulkDensity_t_per_m3   "t/m3 loose chips"                            / 0.30 /
+  68    Handling_tph           "t/h sustained load+unload"                    / 20   /;
+  69   
+  70  Scalar
+  71    C_chip_eurt   "€/t chipping"
+  72    C_handle_eurt "€/t handling (load+unload)"
+  73    PayloadTractor_t "t payload for tractor+22m3 chip box";
+  74   
+  75  Parameter
+  76    C_tkm(m)       "€/t-km by mode"
+  77    C_surcharge(m) "€/t distance-independent per trip/body";
+  78   
+  79  C_chip_eurt = (Tractor_eur_per_h + PTOChipper_eur_per_h)
+  80              / max(1e-6, Chipper_m3_per_h * BulkDensity_t_per_m3);
+  81   
+  82  C_handle_eurt = Bucket_eur_per_t + FrontLoader_eur_per_h / max(1e-6, Handling_tph);
+  83   
+  84  C_surcharge('tractor') = Body_Tractor_eur_per_t ;
+  85  C_surcharge('truck')   = SemiTrailer_eur_per_t  ;
+  86   
+  87  PayloadTractor_t = 22 * BulkDensity_t_per_m3;
+  88  C_tkm('tractor') = Tractor_eur_per_h
+  89                   / max(1e-6, Tractor_speed_kmh * PayloadTractor_t);
+  90   
+  91  * Truck €/t·km: placeholder until KTBL “Zugmaschine (truck head)” €/h is added
+  92  C_tkm('truck')   = 0.12 ;
+  93   
+  94  *------------------*
+  95  * Economics        *
+  96  *------------------*
+  97  Parameter P_chip(j) "€/t price at plant (positive) or gate fee (negative)";
+  98  P_chip('j1') = 25 ;
+  99  P_chip('j2') = 20 ;
+ 100   
+ 101  Parameter DemandUB(j) "t/yr max accepted at plant";
+ 102  DemandUB(j) = +inf ;
+ 103   
+ 104  Parameter DemandLB(j) "t/yr min accepted at plant (Option A only)";
+ 105  DemandLB(j) = 0 ;
+ 106   
+ 107  Scalar Penalty_unused "€/t penalty for leaving supply (Option C)" / 6 /;
+ 108   
+ 109  Parameter Contract(j) "t/yr minimum contracted at plant (Option D)";
+ 110  Contract(j) = 0 ;
+ 111   
+ 112  *------------------*
+ 113  * Variables        *
+ 114  *------------------*
+ 115  Positive Variables
+ 116      x(i,j,m)   "t/yr shipped from i to j by mode m" ;
+ 117   
+ 118  Variables
+ 119      Revenue     "€/yr"
+ 120      VarCost     "€/yr"
+ 121      GrossMargin "€/yr objective" ;
+ 122   
+ 123  Positive Variable Unused(i) "t/yr unshipped supply (Option C)";
+ 124   
+ 125  *------------------*
+ 126  * Equations        *
+ 127  *------------------*
+ 128  Equations
+ 129      SupplyLim(i)    "sum x <= Supply(i) (B/C/D and A-le)"
+ 130      SupplyBal(i)    "sum x  = Supply(i) (A-eq)"
+ 131      SupplySplit(i)  "sum x + Unused = Supply(i) (Option C)"
+ 132      DemandLim(j)    "sum x <= DemandUB(j)"
+ 133      DemandMin(j)    "sum x >= DemandLB(j) (Option A)"
+ 134      DemandCommit(j) "sum x >= Contract(j) (Option D)"
+ 135      RevenueDef      "Revenue definition"
+ 136      CostDef         "Base cost definition"
+ 137      CostDefC        "Cost definition with penalty (Option C)"
+ 138      ObjDef          "GrossMargin = Revenue - VarCost";
+ 139   
+ 140  SupplyLim(i)..   sum((j,m), x(i,j,m)) =l= Supply(i) ;
+ 141  SupplyBal(i)..   sum((j,m), x(i,j,m)) =e= Supply(i) ;
+ 142  SupplySplit(i).. sum((j,m), x(i,j,m)) + Unused(i) =e= Supply(i) ;
+ 143  DemandLim(j)..   sum((i,m), x(i,j,m)) =l= DemandUB(j) ;
+ 144  DemandMin(j)..   sum((i,m), x(i,j,m)) =g= DemandLB(j) ;
+ 145  DemandCommit(j)..sum((i,m), x(i,j,m)) =g= Contract(j) ;
+ 146   
+ 147  RevenueDef.. Revenue =e= sum((i,j,m), P_chip(j) * x(i,j,m));
+ 148   
+ 149  CostDef..
+ 150      VarCost =e=
+ 151          (C_chip_eurt + C_handle_eurt) * sum((i,j,m), x(i,j,m))
+ 152        + sum((i,j,m), (Backhaul * dist(i,j) * C_tkm(m) + C_surcharge(m)) * x(i,j,m));
+ 153   
+ 154  CostDefC..
+ 155      VarCost =e=
+ 156          (C_chip_eurt + C_handle_eurt) * sum((i,j,m), x(i,j,m))
+ 157        + sum((i,j,m), (Backhaul * dist(i,j) * C_tkm(m) + C_surcharge(m)) * x(i,j,m))
+ 158        + Penalty_unused * sum(i, Unused(i));
+ 159   
+ 160  ObjDef..  GrossMargin =e= Revenue - VarCost ;
+ 161   
+ 162  *------------------*
+ 163  * Model variants   *
+ 164  *------------------*
+ 165  Model Upstream_A_eq "Option A(eq): MinCost, ship all supply"
+ 166  / SupplyBal, DemandMin, CostDef /;
+ 167   
+ 168  Model Upstream_A_le "Option A(le): MinCost, ship up to supply"
+ 169  / SupplyLim, DemandMin, CostDef /;
+ 170   
+ 171  Model Upstream_B "Option B: Maximize profit"
+ 172  / SupplyLim, DemandLim, RevenueDef, CostDef, ObjDef /;
+ 173   
+ 174  Model Upstream_C "Option C: Maximize profit with unused penalty"
+ 175  / SupplySplit, DemandLim, RevenueDef, CostDefC, ObjDef /;
+ 176   
+ 177  Model Upstream_D "Option D: Maximize profit with demand commitment"
+ 178  / SupplyLim, DemandLim, DemandCommit, RevenueDef, CostDef, ObjDef /;
+ 179   
+ 180  *------------------*
+ 181  * Solve by option  *
+ 182  *------------------*
+ 183  option limrow=0, limcol=0;
+ 184  Display C_chip_eurt, C_handle_eurt, C_tkm, C_surcharge;
+ 185   
+ 186  Scalar solvedMode /0/;
+ 187   
+ 188  if(OptionMode = 1,
+ 189     if(UseSupplyEq = 1,
+ 190        solve Upstream_A_eq using LP minimizing VarCost ;
+ 191     else
+ 192        solve Upstream_A_le using LP minimizing VarCost ;
+ 193     );
+ 194     solvedMode = 1 ;
+ 195  );
+ 196   
+ 197  if(OptionMode = 2,
+ 198     solve Upstream_B using LP maximizing GrossMargin ;
+ 199     solvedMode = 2 ;
+ 200  );
+ 201   
+ 202  if(OptionMode = 3,
+ 203     solve Upstream_C using LP maximizing GrossMargin ;
+ 204     solvedMode = 3 ;
+ 205  );
+ 206   
+ 207  if(OptionMode = 4,
+ 208     solve Upstream_D using LP maximizing GrossMargin ;
+ 209     solvedMode = 4 ;
+ 210  );
+ 211   
+ 212  abort$(solvedMode=0) "Set OptionMode to 1(A) 2(B) 3(C) or 4(D).";
+ 213   
+ 214  *==============================================================*
+ 215  * Post-solve analytics: location-aware gross margin            *
+ 216  *==============================================================*
+ 217  Parameter
+ 218    UC_lane(i,j,m)  "€/t unit cost per lane i->j,m"
+ 219    UR_j(j)         "€/t unit revenue at plant j"
+ 220    UM_lane(i,j,m)  "€/t unit margin per lane (UR - UC)"
+ 221    Xsol(i,j,m)     "t/yr shipped"
+ 222    Rev_lane(i,j,m) "€/yr revenue by lane"
+ 223    Cost_lane(i,j,m)"€/yr cost by lane"
+ 224    GM_lane(i,j,m)  "€/yr gross margin by lane"
+ 225    Rev_site(j)     "€/yr revenue at plant j"
+ 226    Cost_site(j)    "€/yr cost at plant j"
+ 227    GM_site(j)      "€/yr gross margin at plant j"
+ 228    GM_farm(i)      "€/yr gross margin by farm i"
+ 229    GM_mode(m)      "€/yr gross margin by mode m"
+ 230    GM_total        "€/yr total gross margin"
+ 231    BE_price(i,j,m) "€/t break-even price per lane"
+ 232    BE_radius(j,m)  "km one-way break-even distance (by mode at plant)";
+ 233   
+ 234  UC_lane(i,j,m) = (C_chip_eurt + C_handle_eurt)
+ 235                 + (Backhaul * dist(i,j) * C_tkm(m) + C_surcharge(m));
+ 236  UR_j(j)        = P_chip(j);
+ 237  UM_lane(i,j,m) = UR_j(j) - UC_lane(i,j,m);
+ 238   
+ 239  Xsol(i,j,m)      = x.l(i,j,m);
+ 240  Rev_lane(i,j,m)  = UR_j(j) * Xsol(i,j,m);
+ 241  Cost_lane(i,j,m) = UC_lane(i,j,m) * Xsol(i,j,m);
+ 242  GM_lane(i,j,m)   = Rev_lane(i,j,m) - Cost_lane(i,j,m);
+ 243   
+ 244  Rev_site(j) = sum((i,m), Rev_lane(i,j,m));
+ 245  Cost_site(j)= sum((i,m), Cost_lane(i,j,m));
+ 246  GM_site(j)  = Rev_site(j) - Cost_site(j);
+ 247   
+ 248  GM_farm(i)  = sum((j,m), GM_lane(i,j,m));
+ 249  GM_mode(m)  = sum((i,j), GM_lane(i,j,m));
+ 250  GM_total    = sum((i,j,m), GM_lane(i,j,m));
+ 251   
+ 252  BE_price(i,j,m) = UC_lane(i,j,m);
+ 253  BE_radius(j,m)  = max(0,
+ 254                        (UR_j(j) - (C_chip_eurt + C_handle_eurt) - C_surcharge(m))
+ 255                        / max(1e-6, Backhaul * C_tkm(m)) );
+ 256   
+ 257  Display
+ 258    UR_j, UC_lane, UM_lane,
+ 259    Rev_lane, Cost_lane, GM_lane,
+ 260    Rev_site, Cost_site, GM_site, GM_farm, GM_mode, GM_total,
+ 261    BE_price, BE_radius;
+ 262   
+ 263  Scalar OptionUsed; OptionUsed = OptionMode;
+ 264  put_utility 'log' / '--- Location-aware GM report generated. OptionMode = ' OptionUsed:0:0 ;
+ 265   
+ 266   
+ 267   
+ 268  *=== MIRO: declare outputs (IDC) — graph-ready ===*
+ 270  Parameter
+ 271    Flow(i,j,m)       "t/yr shipped"
+ 272    FlowIJ(i,j)       "t/yr shipped (sum over modes)"
+ 273    SiteGM(j)         "€/yr GM per plant"
+ 274    TotalGM           "€/yr total GM"
+ 275    MIRO_dist(i,j)    "km distance (copy of dist)"
+ 276    UClane(i,j,m)     "€/t unit cost per lane (copy of UC_lane)"
+ 277    UMlane(i,j,m)     "€/t unit margin per lane (copy of UM_lane)"
+ 278    BErad(j,m)        "km break-even radius (one-way; copy of BE_radius)"
+ 279    Pprice(j)         "€/t chip price (copy of P_chip for charts)"
+ 280  ;
+ 282   
+ 283  * Fill outputs
+ 284  Flow(i,j,m)   = x.l(i,j,m);
+ 285  FlowIJ(i,j)   = sum(m, x.l(i,j,m));
+ 286  SiteGM(j)     = sum((i,m), P_chip(j)*x.l(i,j,m)
+ 287                   - ((C_chip_eurt + C_handle_eurt)
+ 288                      + (Backhaul*dist(i,j)*C_tkm(m) + C_surcharge(m)))*x.l(i,j,m));
+ 289  TotalGM       = sum(j, SiteGM(j));
+ 290   
+ 291  * Copies for charts (avoid re-declaring existing symbols)
+ 292  MIRO_dist(i,j) = dist(i,j);
+ 293  UClane(i,j,m)  = UC_lane(i,j,m);
+ 294  UMlane(i,j,m)  = UM_lane(i,j,m);
+ 295  BErad(j,m)     = BE_radius(j,m);
+ 296  Pprice(j)      = P_chip(j);
+ 297   
+ 298  * Export for MIRO
+ 299  execute_unload 'miro_out.gdx',
+ 300    i, j, m,
+ 301    Flow, FlowIJ, SiteGM, TotalGM,
+ 302    MIRO_dist, UClane, UMlane, BErad, Pprice
+ 303  ;
+ 304   
+ 305   
+ 306   
+ 307  execute_unload 'excel_out.gdx',
+ 308     i, j, m,
+ 309     dist, UC_lane, UR_j, UM_lane, BE_price, BE_radius,
+ 310     Rev_lane, Cost_lane, GM_lane, GM_farm, GM_site, GM_mode, GM_total;
+ 311   
+ 312   
+ 313   
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/17/25 10:25:19 Page 2
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Include File Summary
+
+
+   SEQ   GLOBAL TYPE      PARENT   LOCAL  FILENAME
+
+     1        1 INPUT          0       0  C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_2.gms
+     2      314 CALL           1     314  gdxdump excel_out.gdx symb=UC_lane > UC_lane.csv
+     3      315 CALL           1     315  gdxdump excel_out.gdx symb=UM_lane > UM_lane.csv
+     4      316 CALL           1     316  gdxdump excel_out.gdx symb=BE_radius > BE_radius.csv
+     5      317 CALL           1     317  gdxdump excel_out.gdx symb=Rev_lane > Rev_lane.csv
+     6      318 CALL           1     318  gdxdump excel_out.gdx symb=Cost_lane > Cost_lane.csv
+     7      319 CALL           1     319  gdxdump excel_out.gdx symb=GM_lane > GM_lane.csv
+
+
+COMPILATION TIME     =        1.093 SECONDS      3 MB  49.6.1 55d34574 WEX-WEI
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/17/25 10:25:19 Page 3
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+E x e c u t i o n
+
+
+----    184 PARAMETER C_chip_eurt          =        8.596  €/t chipping
+            PARAMETER C_handle_eurt        =        0.824  €/t handling (load+unload)
+
+----    184 PARAMETER C_tkm  €/t-km by mode
+
+tractor 0.158,    truck   0.120
+
+
+----    184 PARAMETER C_surcharge  €/t distance-independent per trip/body
+
+tractor 0.820,    truck   0.890
+
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/17/25 10:25:19 Page 4
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Range Statistics    SOLVE Upstream_B Using LP From line 198
+
+
+RANGE STATISTICS (ABSOLUTE NON-ZERO FINITE VALUES)
+
+RHS       [min, max] : [ 7.000E+02, 1.200E+03] - Zero values observed as well
+Bound     [min, max] : [        NA,        NA] - Zero values observed as well
+Matrix    [min, max] : [ 1.000E+00, 3.560E+01]
+
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/17/25 10:25:19 Page 5
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Model Statistics    SOLVE Upstream_B Using LP From line 198
+
+
+MODEL STATISTICS
+
+BLOCKS OF EQUATIONS           5     SINGLE EQUATIONS            8
+BLOCKS OF VARIABLES           4     SINGLE VARIABLES           15
+NON ZERO ELEMENTS            53
+
+
+GENERATION TIME      =        0.125 SECONDS      4 MB  49.6.1 55d34574 WEX-WEI
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/17/25 10:25:19 Page 6
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Solution Report     SOLVE Upstream_B Using LP From line 198
+
+
+               S O L V E      S U M M A R Y
+
+     MODEL   Upstream_B          OBJECTIVE  GrossMargin
+     TYPE    LP                  DIRECTION  MAXIMIZE
+     SOLVER  CPLEX               FROM LINE  198
+
+**** SOLVER STATUS     1 Normal Completion
+**** MODEL STATUS      1 Optimal
+**** OBJECTIVE VALUE            17952.0000
+
+ RESOURCE USAGE, LIMIT          0.000 10000000000.000
+ ITERATION COUNT, LIMIT         0    2147483647
+--- GAMS/CPLEX licensed for continuous and discrete problems.
+--- GMO setup time: 0.00s
+--- GMO memory 0.50 Mb (peak 0.50 Mb)
+--- Dictionary memory 0.00 Mb
+--- Cplex 22.1.2.0 link memory 0.00 Mb (peak 0.00 Mb)
+--- Starting Cplex
+
+
+--- LP status (1): optimal.
+--- Cplex Time: 0.00sec (det. 0.01 ticks)
+
+
+Optimal solution found
+Objective:        17952.000000
+
+
+---- EQU SupplyLim  sum x <= Supply(i) (B/C/D and A-le)
+
+          LOWER          LEVEL          UPPER         MARGINAL
+
+i1        -INF         1200.0000      1200.0000         9.8900      
+i2        -INF          900.0000       900.0000         3.8900      
+i3        -INF          700.0000       700.0000         3.6900      
+
+---- EQU DemandLim  sum x <= DemandUB(j)
+
+          LOWER          LEVEL          UPPER         MARGINAL
+
+j1        -INF         2100.0000        +INF             .          
+j2        -INF          700.0000        +INF             .          
+
+                           LOWER          LEVEL          UPPER         MARGINAL
+
+---- EQU RevenueDef          .              .              .             1.0000      
+---- EQU CostDef             .              .              .            -1.0000      
+---- EQU ObjDef              .              .              .             1.0000      
+
+  RevenueDef  Revenue definition
+  CostDef  Base cost definition
+  ObjDef  GrossMargin = Revenue - VarCost
+
+---- VAR x  t/yr shipped from i to j by mode m
+
+                     LOWER          LEVEL          UPPER         MARGINAL
+
+i1.j1.tractor          .              .            +INF           -1.4694      
+i1.j1.truck            .          1200.0000        +INF             .          
+i1.j2.tractor          .              .            +INF          -19.1482      
+i1.j2.truck            .              .            +INF          -14.6000      
+i2.j1.tractor          .              .            +INF           -3.3936      
+i2.j1.truck            .           900.0000        +INF             .          
+i2.j2.tractor          .              .            +INF           -3.6391      
+i2.j2.truck            .              .            +INF           -1.4000      
+i3.j1.tractor          .              .            +INF          -14.2876      
+i3.j1.truck            .              .            +INF           -8.2000      
+i3.j2.tractor          .              .            +INF           -1.8542      
+i3.j2.truck            .           700.0000        +INF             .          
+
+                           LOWER          LEVEL          UPPER         MARGINAL
+
+---- VAR Revenue           -INF        66500.0000        +INF             .          
+---- VAR VarCost           -INF        48548.0000        +INF             .          
+---- VAR GrossMarg~        -INF        17952.0000        +INF             .          
+
+  Revenue  €/yr
+  VarCost  €/yr
+  GrossMargin  €/yr objective
+
+
+**** REPORT SUMMARY :        0     NONOPT
+                             0 INFEASIBLE
+                             0  UNBOUNDED
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/17/25 10:25:19 Page 7
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+E x e c u t i o n
+
+
+----    258 PARAMETER UR_j  €/t unit revenue at plant j
+
+j1 25.000,    j2 20.000
+
+
+----    258 PARAMETER UC_lane  €/t unit cost per lane i->j,m
+
+          tractor       truck
+
+i1.j1      16.579      15.110
+i1.j2      29.258      24.710
+i2.j1      24.504      21.110
+i2.j2      19.749      17.510
+i3.j1      35.598      29.510
+i3.j2      18.164      16.310
+
+
+----    258 PARAMETER UM_lane  €/t unit margin per lane (UR - UC)
+
+          tractor       truck
+
+i1.j1       8.421       9.890
+i1.j2      -9.258      -4.710
+i2.j1       0.496       3.890
+i2.j2       0.251       2.490
+i3.j1     -10.598      -4.510
+i3.j2       1.836       3.690
+
+
+----    258 PARAMETER Rev_lane  €/yr revenue by lane
+
+            truck
+
+i1.j1   30000.000
+i2.j1   22500.000
+i3.j2   14000.000
+
+
+----    258 PARAMETER Cost_lane  €/yr cost by lane
+
+            truck
+
+i1.j1   18132.000
+i2.j1   18999.000
+i3.j2   11417.000
+
+
+----    258 PARAMETER GM_lane  €/yr gross margin by lane
+
+            truck
+
+i1.j1   11868.000
+i2.j1    3501.000
+i3.j2    2583.000
+
+
+----    258 PARAMETER Rev_site  €/yr revenue at plant j
+
+j1 52500.000,    j2 14000.000
+
+
+----    258 PARAMETER Cost_site  €/yr cost at plant j
+
+j1 37131.000,    j2 11417.000
+
+
+----    258 PARAMETER GM_site  €/yr gross margin at plant j
+
+j1 15369.000,    j2  2583.000
+
+
+----    258 PARAMETER GM_farm  €/yr gross margin by farm i
+
+i1 11868.000,    i2  3501.000,    i3  2583.000
+
+
+----    258 PARAMETER GM_mode  €/yr gross margin by mode m
+
+truck 17952.000
+
+
+----    258 PARAMETER GM_total             =    17952.000  €/yr total gross margin
+
+----    258 PARAMETER BE_price  €/t break-even price per lane
+
+          tractor       truck
+
+i1.j1      16.579      15.110
+i1.j2      29.258      24.710
+i2.j1      24.504      21.110
+i2.j2      19.749      17.510
+i3.j1      35.598      29.510
+i3.j2      18.164      16.310
+
+
+----    258 PARAMETER BE_radius  km one-way break-even distance (by mode at plant)
+
+       tractor       truck
+
+j1      46.566      61.208
+j2      30.792      40.375
+
+
+**** REPORT FILE SUMMARY
+
+ puDummy C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\225a\myPuDummy.dat
+
+
+EXECUTION TIME       =        0.922 SECONDS      4 MB  49.6.1 55d34574 WEX-WEI
+
+
+USER: Large MUD - 20 User License                    S231215|0002AN-WIN
+      Leibniz-Zentrum fuer Agrarlandschaftsforschung (ZALF) e. V.DC8734
+      License for teaching and research at degree granting institutions
+
+
+**** FILE SUMMARY
+
+Input      C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_2.gms
+Output     C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_2.lst

@@ -1,0 +1,5 @@
+
+Parameter Cost_lane(*,*,*) '€/yr cost by lane' /
+'i1'.'j1'.'truck' 19456.3129940764, 
+'i2'.'j1'.'truck' 16734.7658793529, 
+'i3'.'j2'.'truck' 6904.39567416889 /;

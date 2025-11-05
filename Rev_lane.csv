@@ -1,0 +1,5 @@
+
+Parameter Rev_lane(*,*,*) '€/yr revenue by lane' /
+'i1'.'j1'.'truck' 26529.0666666667, 
+'i2'.'j1'.'truck' 16882.1333333333, 
+'i3'.'j2'.'truck' 7036.58666666667 /;

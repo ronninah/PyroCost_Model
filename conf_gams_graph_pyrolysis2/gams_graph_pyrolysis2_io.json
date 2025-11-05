@@ -1,0 +1,81 @@
+{
+	"modelTitle":	"G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m",
+	"inputSymbols":	{
+		"_scalars":	{
+			"alias":	"Input Scalars",
+			"symnames":	["p_biochar", "d_active", "q_char", "q_ship", "c_tkm", "surcharge", "v_up", "fixed_plant", "v_plant", "rev_elec", "labor_on", "v_labor"],
+			"symtext":	["p_biochar", "d_active", "q_char", "q_ship", "c_tkm", "surcharge", "v_up", "fixed_plant", "v_plant", "rev_elec", "labor_on", "v_labor"],
+			"symtypes":	["parameter", "parameter", "parameter", "parameter", "parameter", "parameter", "parameter", "parameter", "parameter", "parameter", "parameter", "parameter"],
+			"headers":	{
+				"scalar":	{
+					"type":	"string",
+					"alias":	"Scalar Name"
+				},
+				"description":	{
+					"type":	"string",
+					"alias":	"Scalar Description"
+				},
+				"value":	{
+					"type":	"string",
+					"alias":	"Scalar Value"
+				}
+			}
+		}
+	},
+	"outputSymbols":	{
+		"profitmap":	{
+			"alias":	"profitmap",
+			"symtype":	"parameter",
+			"headers":	{
+				"p":	{
+					"type":	"string",
+					"alias":	"p"
+				},
+				"d":	{
+					"type":	"string",
+					"alias":	"d"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"profitmap"
+				}
+			}
+		},
+		"curvedist":	{
+			"alias":	"curvedist",
+			"symtype":	"parameter",
+			"headers":	{
+				"d":	{
+					"type":	"string",
+					"alias":	"d"
+				},
+				"metric":	{
+					"type":	"string",
+					"alias":	"metric"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"curvedist"
+				}
+			}
+		},
+		"curveprice":	{
+			"alias":	"curveprice",
+			"symtype":	"parameter",
+			"headers":	{
+				"p":	{
+					"type":	"string",
+					"alias":	"p"
+				},
+				"metric":	{
+					"type":	"string",
+					"alias":	"metric"
+				},
+				"value":	{
+					"type":	"numeric",
+					"alias":	"curveprice"
+				}
+			}
+		}
+	}
+}

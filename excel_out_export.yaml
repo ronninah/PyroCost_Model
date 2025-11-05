@@ -1,0 +1,77 @@
+- GDXReader:
+    file: C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\excel_out.gdx
+    symbols: 
+      - name: i
+      - name: j
+      - name: m
+      - name: dist
+      - name: UC_lane
+      - name: UR_j
+      - name: UM_lane
+      - name: BE_price
+      - name: BE_radius
+      - name: Rev_lane
+      - name: Cost_lane
+      - name: GM_lane
+      - name: GM_farm
+      - name: GM_site
+      - name: GM_mode
+      - name: GM_total
+- ExcelWriter:
+    file: C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\excel_out_export.xlsx
+    valueSubstitutions: {
+      EPS: EPS,
+      INF: INF,
+      -INF: -INF,
+      UNDEF: UNDEF,
+      NA: NA
+    }
+    symbols:
+      - name: i
+        range: i!A1
+        columnDimension: 0
+      - name: j
+        range: j!A1
+        columnDimension: 0
+      - name: m
+        range: m!A1
+        columnDimension: 0
+      - name: dist
+        range: dist!A1
+        columnDimension: 0
+      - name: UC_lane
+        range: UC_lane!A1
+        columnDimension: 0
+      - name: UR_j
+        range: UR_j!A1
+        columnDimension: 0
+      - name: UM_lane
+        range: UM_lane!A1
+        columnDimension: 0
+      - name: BE_price
+        range: BE_price!A1
+        columnDimension: 0
+      - name: BE_radius
+        range: BE_radius!A1
+        columnDimension: 0
+      - name: Rev_lane
+        range: Rev_lane!A1
+        columnDimension: 0
+      - name: Cost_lane
+        range: Cost_lane!A1
+        columnDimension: 0
+      - name: GM_lane
+        range: GM_lane!A1
+        columnDimension: 0
+      - name: GM_farm
+        range: GM_farm!A1
+        columnDimension: 0
+      - name: GM_site
+        range: GM_site!A1
+        columnDimension: 0
+      - name: GM_mode
+        range: GM_mode!A1
+        columnDimension: 0
+      - name: GM_total
+        range: GM_total!A1
+        columnDimension: 0

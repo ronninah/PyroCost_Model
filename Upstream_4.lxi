@@ -1,0 +1,43 @@
+B 3 C o m p i l a t i o n
+B 297 Include File Summary
+B 314 E x e c u t i o n
+I 314 Supply
+I 321 A_ha
+I 322 alphaWood
+I 328 Y_SR_DM
+I 329 delta_edge
+I 330 lambdaLoss
+I 331 MC
+I 332 Supply
+I 338 C_chip_eurt
+I 339 C_handle_eurt
+I 340 C_tkm
+I 345 C_surcharge
+I 351 Wage_eur_per_h
+B 355 Range Statistics    SOLVE Upstream_B Using LP From line 203
+B 366 Model Statistics    SOLVE Upstream_B Using LP From line 203
+B 379 Solution Report     SOLVE Upstream_B Using LP From line 203
+F 410 SupplyLim
+F 418 DemandLim
+F 427 RevenueDef
+F 428 CostDef
+F 429 ObjDef
+G 435 x
+G 454 Revenue
+G 455 VarCost
+G 456 GrossMargin
+B 468 E x e c u t i o n
+I 468 UR_j
+I 474 UC_lane
+I 486 UM_lane
+I 498 Rev_lane
+I 507 Cost_lane
+I 516 GM_lane
+I 525 Rev_site
+I 530 Cost_site
+I 535 GM_site
+I 540 GM_farm
+I 545 GM_mode
+I 551 GM_total
+I 552 BE_price
+I 564 BE_radius

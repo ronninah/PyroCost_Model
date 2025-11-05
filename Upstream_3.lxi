@@ -1,0 +1,35 @@
+B 3 C o m p i l a t i o n
+B 287 Include File Summary
+B 304 E x e c u t i o n
+I 306 C_chip_eurt
+I 307 C_handle_eurt
+I 308 C_tkm
+I 313 C_surcharge
+I 319 Wage_eur_per_h
+B 323 Range Statistics    SOLVE Upstream_B Using LP From line 193
+B 334 Model Statistics    SOLVE Upstream_B Using LP From line 193
+B 347 Solution Report     SOLVE Upstream_B Using LP From line 193
+F 378 SupplyLim
+F 386 DemandLim
+F 395 RevenueDef
+F 396 CostDef
+F 397 ObjDef
+G 403 x
+G 422 Revenue
+G 423 VarCost
+G 424 GrossMargin
+B 436 E x e c u t i o n
+I 436 UR_j
+I 442 UC_lane
+I 454 UM_lane
+I 466 Rev_lane
+I 475 Cost_lane
+I 484 GM_lane
+I 493 Rev_site
+I 498 Cost_site
+I 503 GM_site
+I 508 GM_farm
+I 513 GM_mode
+I 519 GM_total
+I 520 BE_price
+I 532 BE_radius

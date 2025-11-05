@@ -1,0 +1,31 @@
+B 3 C o m p i l a t i o n
+B 123 Equation Listing    SOLVE Upstream Using LP From line 112
+D 126 SupplyLim
+D 135 DemandLim
+D 142 RevenueDef
+D 147 CostDef
+D 152 ObjDef
+B 158 Column Listing      SOLVE Upstream Using LP From line 112
+E 161 x
+E 183 Revenue
+E 191 VarCost
+E 199 GrossMargin
+B 207 Range Statistics    SOLVE Upstream Using LP From line 112
+B 218 Model Statistics    SOLVE Upstream Using LP From line 112
+B 231 Solution Report     SOLVE Upstream Using LP From line 112
+F 262 SupplyLim
+F 270 DemandLim
+F 279 RevenueDef
+F 280 CostDef
+F 281 ObjDef
+G 283 x
+G 302 Revenue
+G 303 VarCost
+G 304 GrossMargin
+B 316 E x e c u t i o n
+I 318 C_chip_eurt
+I 319 C_handle_eurt
+I 320 C_tkm
+I 325 C_surcharge
+I 331 GrossMargin
+I 332 x

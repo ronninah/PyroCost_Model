@@ -1,0 +1,20 @@
+B 3 C o m p i l a t i o n
+B 128 E x e c u t i o n
+I 130 P_chipDM_roadside
+I 131 d_feed_km
+I 132 r_truck_eur_per_km
+I 133 payload_chip_tFM
+I 134 MC_chip
+I 135 c_haul_per_tFM
+I 136 c_haul_per_tDM
+I 137 P_chipDM_deliv
+I 138 Rev
+I 143 Cfs
+I 148 Clab
+I 153 Com
+I 159 Cbuy
+I 163 GM
+I 168 GM_per_tDM
+I 173 GM_per_year
+I 179 Pchar_BE
+I 180 Pchip_roadside_BE

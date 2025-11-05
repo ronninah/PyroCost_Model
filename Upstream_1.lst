@@ -1,0 +1,351 @@
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/02/25 09:55:12 Page 1
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+C o m p i l a t i o n
+
+
+      UPSTREAM (farm -> plant) CHIPPING + HANDLING + TRANSPORT
+      - Sets: farms i, plants j, modes m.
+      - Objective: maximize GrossMargin = Revenue - VariableCost.
+      - Costs:
+        * Chipping €/t from tractor + PTO chipper €/h divided by t/h throughput.
+        * Handling €/t from loader+bucket (you can tune).
+        * Transport = backhaul * distance * €/t-km by mode + a per-ton surcharge for body/trailer.
+  10   
+  11  *------------------*
+  12  * Sets & data      *
+  13  *------------------*
+  14  Sets
+  15      i   "farms"           / i1*i3 /
+  16      j   "plant sites"     / j1*j2 /
+  17      m   "modes"           / tractor, truck / ;
+  18   
+  19  Alias (i,ii);
+  20   
+  21  Table dist(i,j) "km"
+  22             j1   j2
+  23      i1     20   60
+  24      i2     45   30
+  25      i3     80   25 ;
+  26   
+  27  Parameter Supply(i) "as-received t/yr";
+  28  Supply('i1') = 1200 ;
+  29  Supply('i2') =  900 ;
+  30  Supply('i3') =  700 ;
+  31   
+  32  Scalar Backhaul "1=one-way, 2=round-trip" / 2 / ;
+  33   
+  34  *------------------*
+  35  * KTBL-based inputs
+  36  *------------------*
+  37   
+  38  * --- Chipping (tractor + PTO chipper) ---
+  39  Scalar Tractor_cost_per_h   "€/h Standardtraktor 120 kW"           / 41.84 /;
+  40  Scalar PTOChipper_cost_per_h "€/h Holzhacker PTO 25 m3/h"          / 22.63 /;
+  41  Scalar Chipper_m3_per_h     "m3/h PTO chipper"                     / 25    /;
+  42  Scalar Chip_bulk_density    "t/m3 (loose chips; adjust)"           / 0.30  /;
+  43   
+  44  Scalar Chipper_t_per_h      "t/h";
+  45  Chipper_t_per_h = Chipper_m3_per_h * Chip_bulk_density ;
+  46   
+  47  Scalar C_chip_eurt          "€/t chipping cost";
+  48  C_chip_eurt = (Tractor_cost_per_h + PTOChipper_cost_per_h) / max(1e-6, Chipper_t_per_h) ;
+  49   
+  50  * --- Handling (front loader + light-goods bucket) ---
+  51  Scalar Loader_cost_per_h    "€/h Traktorfrontlader 3000 daN"       / 8.68  /;
+  52  Scalar Bucket_cost_per_t    "€/t Leichtgutschaufel 1.5 m3 (KTBL)"  / 0.12  /;
+  53  Scalar Handling_prod_tph    "t/h achievable loading rate"          / 20    /;
+  54   
+  55  Scalar C_handle_eurt "€/t handling (load+unload)";
+  56  C_handle_eurt = Bucket_cost_per_t + Loader_cost_per_h / max(1e-6, Handling_prod_tph) ;
+  57   
+  58  * --- Transport (mode-specific) ---
+  59  Parameter C_tkm(m)      "€/t-km";
+  60  Parameter C_surcharge(m)"€/t per trip/body";
+  61   
+  62  * choose values (illustrative; replace with your derived ones)
+  63  C_tkm('tractor')      = 0.18 ;  C_surcharge('tractor') = 0.50 ;
+  64  C_tkm('truck')        = 0.12 ;  C_surcharge('truck')   = 0.80 ;
+  65   
+  66  *------------------*
+  67  * Economics        *
+  68  *------------------*
+  69  Scalar P_chip "€/t revenue (or gate fee if negative)" / 0 / ;
+  70   
+  71  * Optionally cap receipts at each site (e.g., annual demand upper bound)
+  72  Parameter DemandUB(j) "t/yr max accepted at plant site";
+  73  DemandUB(j) = +inf ;
+  74   
+  75  *------------------*
+  76  * Variables        *
+  77  *------------------*
+  78  Positive Variables
+  79      x(i,j,m)      "flow t/yr from farm i to plant j by mode m" ;
+  80   
+  81  Variable
+  82      Revenue       "€/yr"
+  83      VarCost       "€/yr"
+  84      GrossMargin   "€/yr objective" ;
+  85   
+  86  *------------------*
+  87  * Equations        *
+  88  *------------------*
+  89  Equations
+  90      SupplyLim(i)
+  91      DemandLim(j)
+  92      RevenueDef
+  93      CostDef
+  94      ObjDef ;
+  95   
+  96  SupplyLim(i)..   sum((j,m), x(i,j,m)) =l= Supply(i) ;
+  97   
+  98  DemandLim(j)..   sum((i,m), x(i,j,m)) =l= DemandUB(j) ;
+  99   
+ 100  RevenueDef..     Revenue =e= P_chip * sum((i,j,m), x(i,j,m)) ;
+ 101   
+ 102  CostDef..
+ 103      VarCost =e=
+ 104          (C_chip_eurt + C_handle_eurt) * sum((i,j,m), x(i,j,m))
+ 105        + sum((i,j,m), (Backhaul * dist(i,j) * C_tkm(m) + C_surcharge(m)) * x(i,j,m)) ;
+ 106   
+ 107  ObjDef..         GrossMargin =e= Revenue - VarCost ;
+ 108   
+ 109  Model Upstream / all / ;
+ 110   
+ 111  * maximize gross margin (if P_chip=0 this will choose zero flow unless you fix a minimum)
+ 112  Solve Upstream using LP maximizing GrossMargin ;
+ 113   
+ 114  Display C_chip_eurt, C_handle_eurt, C_tkm, C_surcharge, GrossMargin.l, x.l ;
+
+
+COMPILATION TIME     =        0.000 SECONDS      3 MB  49.6.1 55d34574 WEX-WEI
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/02/25 09:55:12 Page 2
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Equation Listing    SOLVE Upstream Using LP From line 112
+
+
+---- SupplyLim  =L=  
+
+SupplyLim(i1)..  x(i1,j1,tractor) + x(i1,j1,truck) + x(i1,j2,tractor) + x(i1,j2,truck) =L= 1200 ; (LHS = 0)
+     
+SupplyLim(i2)..  x(i2,j1,tractor) + x(i2,j1,truck) + x(i2,j2,tractor) + x(i2,j2,truck) =L= 900 ; (LHS = 0)
+     
+SupplyLim(i3)..  x(i3,j1,tractor) + x(i3,j1,truck) + x(i3,j2,tractor) + x(i3,j2,truck) =L= 700 ; (LHS = 0)
+     
+
+---- DemandLim  =L=  
+
+DemandLim(j1)..  x(i1,j1,tractor) + x(i1,j1,truck) + x(i2,j1,tractor) + x(i2,j1,truck) + x(i3,j1,tractor) + x(i3,j1,truck) =L= +INF ; (LHS = 0)
+     
+DemandLim(j2)..  x(i1,j2,tractor) + x(i1,j2,truck) + x(i2,j2,tractor) + x(i2,j2,truck) + x(i3,j2,tractor) + x(i3,j2,truck) =L= +INF ; (LHS = 0)
+     
+
+---- RevenueDef  =E=  
+
+RevenueDef..  Revenue =E= 0 ; (LHS = 0)
+     
+
+---- CostDef  =E=  
+
+CostDef..  - 16.85*x(i1,j1,tractor) - 14.75*x(i1,j1,truck) - 31.25*x(i1,j2,tractor) - 24.35*x(i1,j2,truck) - 25.85*x(i2,j1,tractor) - 20.75*x(i2,j1,truck) - 20.45*x(i2,j2,tractor) - 17.15*x(i2,j2,truck) - 38.45*x(i3,j1,tractor) - 29.15*x(i3,j1,truck) - 18.65*x(i3,j2,tractor) - 15.95*x(i3,j2,truck) + VarCost =E= 0 ; (LHS = 0)
+     
+
+---- ObjDef  =E=  
+
+ObjDef..  - Revenue + VarCost + GrossMargin =E= 0 ; (LHS = 0)
+     
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/02/25 09:55:12 Page 3
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Column Listing      SOLVE Upstream Using LP From line 112
+
+
+---- x  flow t/yr from farm i to plant j by mode m
+
+x(i1,j1,tractor)
+                (.LO, .L, .UP, .M = 0, 0, +INF, 0)
+        1       SupplyLim(i1)
+        1       DemandLim(j1)
+      -16.85    CostDef
+
+x(i1,j1,truck)
+                (.LO, .L, .UP, .M = 0, 0, +INF, 0)
+        1       SupplyLim(i1)
+        1       DemandLim(j1)
+      -14.75    CostDef
+
+x(i1,j2,tractor)
+                (.LO, .L, .UP, .M = 0, 0, +INF, 0)
+        1       SupplyLim(i1)
+        1       DemandLim(j2)
+      -31.25    CostDef
+
+REMAINING 9 ENTRIES SKIPPED
+
+---- Revenue  €/yr
+
+Revenue
+                (.LO, .L, .UP, .M = -INF, 0, +INF, 0)
+        1       RevenueDef
+       -1       ObjDef
+
+
+---- VarCost  €/yr
+
+VarCost
+                (.LO, .L, .UP, .M = -INF, 0, +INF, 0)
+        1       CostDef
+        1       ObjDef
+
+
+---- GrossMargin  €/yr objective
+
+GrossMargin
+                (.LO, .L, .UP, .M = -INF, 0, +INF, 0)
+        1       ObjDef
+
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/02/25 09:55:12 Page 4
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Range Statistics    SOLVE Upstream Using LP From line 112
+
+
+RANGE STATISTICS (ABSOLUTE NON-ZERO FINITE VALUES)
+
+RHS       [min, max] : [ 7.000E+02, 1.200E+03] - Zero values observed as well
+Bound     [min, max] : [        NA,        NA] - Zero values observed as well
+Matrix    [min, max] : [ 1.000E+00, 3.845E+01]
+
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/02/25 09:55:12 Page 5
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Model Statistics    SOLVE Upstream Using LP From line 112
+
+
+MODEL STATISTICS
+
+BLOCKS OF EQUATIONS           5     SINGLE EQUATIONS            8
+BLOCKS OF VARIABLES           4     SINGLE VARIABLES           15
+NON ZERO ELEMENTS            41
+
+
+GENERATION TIME      =        0.187 SECONDS      4 MB  49.6.1 55d34574 WEX-WEI
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/02/25 09:55:12 Page 6
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Solution Report     SOLVE Upstream Using LP From line 112
+
+
+               S O L V E      S U M M A R Y
+
+     MODEL   Upstream            OBJECTIVE  GrossMargin
+     TYPE    LP                  DIRECTION  MAXIMIZE
+     SOLVER  CPLEX               FROM LINE  112
+
+**** SOLVER STATUS     1 Normal Completion
+**** MODEL STATUS      1 Optimal
+**** OBJECTIVE VALUE                0.0000
+
+ RESOURCE USAGE, LIMIT          0.000 10000000000.000
+ ITERATION COUNT, LIMIT         0    2147483647
+--- GAMS/CPLEX licensed for continuous and discrete problems.
+--- GMO setup time: 0.00s
+--- GMO memory 0.50 Mb (peak 0.50 Mb)
+--- Dictionary memory 0.00 Mb
+--- Cplex 22.1.2.0 link memory 0.00 Mb (peak 0.00 Mb)
+--- Starting Cplex
+
+
+--- LP status (1): optimal.
+--- Cplex Time: 0.00sec (det. 0.01 ticks)
+
+
+Optimal solution found
+Objective:            0.000000
+
+
+---- EQU SupplyLim  
+
+          LOWER          LEVEL          UPPER         MARGINAL
+
+i1        -INF             .          1200.0000          .          
+i2        -INF             .           900.0000          .          
+i3        -INF             .           700.0000          .          
+
+---- EQU DemandLim  
+
+          LOWER          LEVEL          UPPER         MARGINAL
+
+j1        -INF             .            +INF             .          
+j2        -INF             .            +INF             .          
+
+                           LOWER          LEVEL          UPPER         MARGINAL
+
+---- EQU RevenueDef          .              .              .             1.0000      
+---- EQU CostDef             .              .              .            -1.0000      
+---- EQU ObjDef              .              .              .             1.0000      
+
+---- VAR x  flow t/yr from farm i to plant j by mode m
+
+                     LOWER          LEVEL          UPPER         MARGINAL
+
+i1.j1.tractor          .              .            +INF          -16.8500      
+i1.j1.truck            .              .            +INF          -14.7500      
+i1.j2.tractor          .              .            +INF          -31.2500      
+i1.j2.truck            .              .            +INF          -24.3500      
+i2.j1.tractor          .              .            +INF          -25.8500      
+i2.j1.truck            .              .            +INF          -20.7500      
+i2.j2.tractor          .              .            +INF          -20.4500      
+i2.j2.truck            .              .            +INF          -17.1500      
+i3.j1.tractor          .              .            +INF          -38.4500      
+i3.j1.truck            .              .            +INF          -29.1500      
+i3.j2.tractor          .              .            +INF          -18.6500      
+i3.j2.truck            .              .            +INF          -15.9500      
+
+                           LOWER          LEVEL          UPPER         MARGINAL
+
+---- VAR Revenue           -INF             .            +INF             .          
+---- VAR VarCost           -INF             .            +INF             .          
+---- VAR GrossMarg~        -INF             .            +INF             .          
+
+  Revenue  €/yr
+  VarCost  €/yr
+  GrossMargin  €/yr objective
+
+
+**** REPORT SUMMARY :        0     NONOPT
+                             0 INFEASIBLE
+                             0  UNBOUNDED
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 09/02/25 09:55:12 Page 7
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+E x e c u t i o n
+
+
+----    114 PARAMETER C_chip_eurt          =        8.596  €/t chipping cost
+            PARAMETER C_handle_eurt        =        0.554  €/t handling (load+unload)
+
+----    114 PARAMETER C_tkm  €/t-km
+
+tractor 0.180,    truck   0.120
+
+
+----    114 PARAMETER C_surcharge  €/t per trip/body
+
+tractor 0.500,    truck   0.800
+
+
+----    114 VARIABLE GrossMargin.L         =        0.000  €/yr objective
+
+----    114 VARIABLE x.L  flow t/yr from farm i to plant j by mode m
+
+                      ( ALL       0.000 )
+
+
+
+EXECUTION TIME       =        1.000 SECONDS      4 MB  49.6.1 55d34574 WEX-WEI
+
+
+USER: Large MUD - 20 User License                    S231215|0002AN-WIN
+      Leibniz-Zentrum fuer Agrarlandschaftsforschung (ZALF) e. V.DC8734
+      License for teaching and research at degree granting institutions
+
+
+**** FILE SUMMARY
+
+Input      C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_1.gms
+Output     C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_1.lst

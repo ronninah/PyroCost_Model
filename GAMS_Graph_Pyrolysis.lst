@@ -1,0 +1,166 @@
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 10/14/25 14:46:30 Page 1
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+C o m p i l a t i o n
+
+
+   1  * ===== Minimal, ASCII-only, standalone model =====
+   2   
+   4  Scalar P_BIOCHAR   /500/     ;
+   5  Scalar d_active    /50/      ;
+   6  Scalar Q_char      /100/     ;
+   7  Scalar Q_ship      /100/     ;
+   8  Scalar c_tkm       /0.12/    ;
+   9  Scalar surcharge   /5/       ;
+  10  Scalar v_up        /50/      ;
+  11  Scalar fixed_plant /10000/   ;
+  12  Scalar v_plant     /30/      ;
+  13  Scalar Rev_elec    /0/       ;
+  14  Scalar labor_on    /1/       ;
+  15  Scalar v_labor     /8/       ;
+  17  * Variables and equation
+  18  Variables z ;
+  19  Equations obj ;
+  20   
+  21  * Components as scalars (recomputed before each solve)
+  22  Scalar labor_cost, C_transport, C_upstream, C_plant, Revenue ;
+  23   
+  24  * Objective definition
+  25  obj.. z =e= Revenue - (C_transport + C_upstream + C_plant) ;
+  26   
+  27  Model BiocharProfit / obj / ;
+  28   
+  29  * First solve with defaults
+  30  labor_cost = labor_on * v_labor * Q_char ;
+  31  C_transport = c_tkm * d_active * Q_ship + surcharge * Q_ship ;
+  32  C_upstream  = v_up * Q_char + labor_cost ;
+  33  C_plant     = fixed_plant + v_plant * Q_char ;
+  34  Revenue     = P_BIOCHAR * Q_char + Rev_elec ;
+  35  Solve BiocharProfit using LP maximizing z ;
+  36   
+  37  * --------- Sensitivity surface: price x distance (solverless) ----------
+  38  Set p / p200, p250, p300, p350, p400, p450, p500, p550, p600, p650, p700, p750, p800 /
+  39      d / d0, d10, d20, d30, d40, d50, d60, d70, d80, d90, d100, d110, d120, d130, d140
+  40           , d150, d160, d170, d180, d190, d200 /;
+  41   
+  42  Parameter Pgrid(p), Dgrid(d);
+  43  Pgrid("p200") = 200 ; Pgrid("p250") = 250 ; Pgrid("p300") = 300 ;
+  44  Pgrid("p350") = 350 ; Pgrid("p400") = 400 ; Pgrid("p450") = 450 ;
+  45  Pgrid("p500") = 500 ; Pgrid("p550") = 550 ; Pgrid("p600") = 600 ;
+  46  Pgrid("p650") = 650 ; Pgrid("p700") = 700 ; Pgrid("p750") = 750 ; Pgrid("p800") = 800 ;
+  47   
+  48  Dgrid("d0") = 0 ; Dgrid("d10") = 10 ; Dgrid("d20") = 20 ; Dgrid("d30") = 30 ; Dgrid("d40") = 40 ;
+  49  Dgrid("d50") = 50 ; Dgrid("d60") = 60 ; Dgrid("d70") = 70 ; Dgrid("d80") = 80 ; Dgrid("d90") = 90 ;
+  50  Dgrid("d100") = 100 ; Dgrid("d110") = 110 ; Dgrid("d120") = 120 ; Dgrid("d130") = 130 ; Dgrid("d140") = 140 ;
+  51  Dgrid("d150") = 150 ; Dgrid("d160") = 160 ; Dgrid("d170") = 170 ; Dgrid("d180") = 180 ; Dgrid("d190") = 190 ; Dgrid("d200") = 200 ;
+  52   
+  53  * Profit map (price x distance)
+  54  Parameter PROFITMAP(p,d);
+  55  Scalar labor_cost, C_transport, C_upstream, C_plant, Revenue, Profit;
+  56   
+  57  Loop(p,
+  58    P_BIOCHAR = Pgrid(p);
+****            $893
+**** 893  Can not assign to a symbol declared as external input;
+****         Set '$offIDCProtect' or comand line parameter 'IDCProtect=0'
+****         to ignore this
+  59    Loop(d,
+  60      d_active   = Dgrid(d);
+****             $893
+**** 893  Can not assign to a symbol declared as external input;
+****         Set '$offIDCProtect' or comand line parameter 'IDCProtect=0'
+****         to ignore this
+  61   
+  62      labor_cost = labor_on * v_labor * Q_char ;
+  63      C_transport = c_tkm * d_active * Q_ship + surcharge * Q_ship ;
+  64      C_upstream  = v_up * Q_char + labor_cost ;
+  65      C_plant     = fixed_plant + v_plant * Q_char ;
+  66      Revenue     = P_BIOCHAR * Q_char + Rev_elec ;
+  67   
+  68      Profit = Revenue - (C_transport + C_upstream + C_plant);
+  69      PROFITMAP(p,d) = Profit ;
+  70    );
+  71  );
+  72   
+  73  * Write surface CSV
+  74  File fSurf /profit_surface.csv/ ; put fSurf ;
+  75  put 'price_eur_per_t,dist_km,profit_eur' / ;
+  76  Loop(p, Loop(d,
+  77    put Pgrid(p):0:0 ',' Dgrid(d):0:0 ',' PROFITMAP(p,d):0:2 / ;
+  78  )); putclose fSurf ;
+  79   
+  80   
+  81   
+  82  * --------- 1D curves (no ord, reuse p and d) ----------
+  83  Set metric / x, y / ;
+  84  Parameter CurveDist(d,metric), CurvePrice(p,metric) ;
+  85   
+  86  * Profit vs distance at current P_BIOCHAR
+  87  Loop(d,
+  88    d_active   = Dgrid(d) ;
+****           $893
+**** 893  Can not assign to a symbol declared as external input;
+****         Set '$offIDCProtect' or comand line parameter 'IDCProtect=0'
+****         to ignore this
+  89    labor_cost = labor_on * v_labor * Q_char ;
+  90    C_transport = c_tkm * d_active * Q_ship + surcharge * Q_ship ;
+  91    C_upstream  = v_up * Q_char + labor_cost ;
+  92    C_plant     = fixed_plant + v_plant * Q_char ;
+  93    Revenue     = P_BIOCHAR * Q_char + Rev_elec ;
+  94    Profit = Revenue - (C_transport + C_upstream + C_plant) ;
+  95    CurveDist(d,"x") = Dgrid(d) ;
+  96    CurveDist(d,"y") = Profit ;
+  97  ) ;
+  98   
+  99  File fCD /curve_distance.csv/ ; put fCD ;
+ 100  put 'dist_km,profit_eur' / ;
+ 101  Loop(d, put CurveDist(d,"x"):0:0 ',' CurveDist(d,"y"):0:2 / ; ) ;
+ 102  putclose fCD ;
+ 103   
+ 104  * Profit vs price at fixed distance = 50 km
+ 105  d_active = Dgrid("d50") ;
+****         $893
+**** 893  Can not assign to a symbol declared as external input;
+****         Set '$offIDCProtect' or comand line parameter 'IDCProtect=0'
+****         to ignore this
+ 106  Loop(p,
+ 107    P_BIOCHAR = Pgrid(p) ;
+****            $893
+**** 893  Can not assign to a symbol declared as external input;
+****         Set '$offIDCProtect' or comand line parameter 'IDCProtect=0'
+****         to ignore this
+ 108    labor_cost = labor_on * v_labor * Q_char ;
+ 109    C_transport = c_tkm * d_active * Q_ship + surcharge * Q_ship ;
+ 110    C_upstream  = v_up * Q_char + labor_cost ;
+ 111    C_plant     = fixed_plant + v_plant * Q_char ;
+ 112    Revenue     = P_BIOCHAR * Q_char + Rev_elec ;
+ 113    Profit = Revenue - (C_transport + C_upstream + C_plant) ;
+ 114    CurvePrice(p,"x") = Pgrid(p) ;
+ 115    CurvePrice(p,"y") = Profit ;
+ 116  ) ;
+ 117   
+ 118  File fCP /curve_price.csv/ ; put fCP ;
+ 119  put 'price_eur_per_t,profit_eur' / ;
+ 120  Loop(p, put CurvePrice(p,"x"):0:0 ',' CurvePrice(p,"y"):0:2 / ; ) ;
+ 121  putclose fCP ;
+ 122   
+ 124  Parameter PROFITMAP(p,d), CurveDist(d,metric), CurvePrice(p,metric);
+ 126   
+ 127  execute_unload 'results.gdx', PROFITMAP, CurveDist, CurvePrice ;
+
+**** 5 ERROR(S)   0 WARNING(S)
+
+
+COMPILATION TIME     =        0.000 SECONDS      3 MB  49.6.1 55d34574 WEX-WEI
+
+
+USER: Large MUD - 20 User License                    S231215|0002AN-WIN
+      Leibniz-Zentrum fuer Agrarlandschaftsforschung (ZALF) e. V.DC8734
+      License for teaching and research at degree granting institutions
+
+
+**** FILE SUMMARY
+
+Input      C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\GAMS_Graph_Pyrolysis.gms
+Output     C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\GAMS_Graph_Pyrolysis.lst
+
+**** USER ERROR(S) ENCOUNTERED

@@ -1,0 +1,451 @@
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 10/20/25 16:27:19 Page 1
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+C o m p i l a t i o n
+
+
+   1  *======================================================================*
+   2  *  Pyrolysis Upstream: Chipping + Handling + Transport (Farm -> Plant) *
+   3  *  KTBL-driven costs + LABOR adders (Option B only)                    *
+   4  *======================================================================*
+   5   
+      This version:
+      - Keeps only Option B (profit maximization).
+      - Uses KTBL-driven machine costs; labor toggles are active (IncludeLabor=1).
+      - Computes Supply(i) from area, α_wood (24/48/96 m alleys), SRC yield, losses, MC.
+      - Transport modes: tractor & truck with fixed-per-ton overhead + €/t·km.
+      - Backhaul = 2 (two-way distance).
+      - Feedstock price set once via scalar FeedstockPrice; applies to all plants
+        (or uncomment per-plant if needed).
+  16   
+  17  *------------------*
+  18  * Sets & distances *
+  19  *------------------*
+  20  Sets
+  21      i   "farms (alley-width scenarios)" / i1*i3 /
+  22      j   "plants"                         / j1*j2 /
+  23      m   "modes"                          / tractor, truck / ;
+  24  Alias (i,ii);
+  25   
+  26  Table dist(i,j)  "km"
+  27             j1   j2
+  28  i1         20   60
+  29  i2         45   30
+  30  i3         80   25 ;
+  31   
+  32  *----------------------------------------------*
+  33  * Geometry (ALMA): α_wood from 6 m tree strip  *
+  34  *----------------------------------------------*
+  35  Parameter AlleyWidth_m(i)  "crop alley width (m)"
+  36            TreeStrip_m      "tree strip total width (m)"
+  37            alphaWood(i)     "wooded share of farm area (fraction)";
+  38   
+  39  AlleyWidth_m("i1") = 24 ;
+  40  AlleyWidth_m("i2") = 48 ;
+  41  AlleyWidth_m("i3") = 96 ;
+  42  TreeStrip_m        = 6 ;
+  43   
+  44  alphaWood(i) = TreeStrip_m / (TreeStrip_m + AlleyWidth_m(i));
+  45   
+  46  *------------------------------*
+  47  * Supply (endogenous, as-recv) *
+  48  *------------------------------*
+  49  Scalar
+  50    A_ha        "Farm arable area (ha, same for all i)"           / 200 /
+  51    Y_SR_DM     "SRC baseline yield (t DM/ha/yr)"                 / 16  /
+  52    delta_edge  "Edge-effect uplift (fraction)"                   / 0.40/
+  53    lambdaLoss  "Harvest/handling loss fraction"                  / 0.05/
+  54    MC          "Moisture content of delivered chips (fraction)"  / 0.35/ ;
+  55   
+  56  Parameter Supply(i) "as-received t/yr (computed)";
+  57  Supply(i) = (A_ha * alphaWood(i) * Y_SR_DM * (1 + delta_edge) * (1 - lambdaLoss))
+  58              / max(1e-6, 1 - MC) ;
+  59  display Supply;
+  60   
+  61  Scalar Backhaul "1=one-way, 2=round-trip" / 2 / ;
+  62   
+  63  *------------------------------*
+  64  * KTBL machine inputs (no labor)
+  65  *------------------------------*
+  66  Scalar
+  67    Tractor_eur_per_h      "€/h Standardtraktor 120 kW (KTBL)"          / 41.84 /
+  68    PTOChipper_eur_per_h   "€/h Holzhacker PTO 25 m3/h (KTBL)"          / 22.63 /
+  69    Body_Tractor_eur_per_t "€/t Häckselaufbau 22 m3 (KTBL)"             / 0.82  /
+  70    SemiTrailer_eur_per_t  "€/t Sattelzugauflieger 34 t (KTBL)"         / 0.89  /
+  71    Bucket_eur_per_t       "€/t Leichtgutschaufel 1.5 m3 (KTBL)"        / 0.39  /
+  72    FrontLoader_eur_per_h  "€/h Traktorfrontlader (KTBL)"               /  8.68 /
+  73    Tractor_speed_kmh      "km/h (tractor road speed, KTBL sheet)"      / 40    /
+  74    Chipper_m3_per_h       "m3/h (nameplate / KTBL)"                    / 25    /;
+  75   
+  76  Scalar
+  77    BulkDensity_t_per_m3   "t/m3 loose chips (KTBL/ALMA)"                / 0.30 /
+  78    Handling_tph           "t/h sustained load+unload (KTBL sheet)"       / 20   /;
+  79   
+  80  *------------------------------*
+  81  * Labor settings (toggles)
+  82  *------------------------------*
+  83  Scalar
+  84    IncludeLabor           "1=include operator labor; 0=exclude"         / 1 /
+  85    IncludeChipOp          "1=pay chipper operator in chipping"          / 1 /
+  86    IncludeLoader          "1=pay loader operator in handling"           / 1 /
+  87    IncludeDriver          "1=pay driver labor for transport"            / 1 /
+  88    AddLaborToTruckTkm     "1=add driver labor to truck tkm; 0=skip"     / 1 / ;
+  89   
+  90  * Wages (Germany 2025 minimum)
+  91  Scalar
+  92    WageBase_eur_per_h     "EUR/h statutory minimum (2025-01-01)"        / 12.82 /
+  93    OncostFrac             "employer on-costs fraction (social etc.)"    / 0.22  /
+  94    Wage_eur_per_h         "EUR/h wage incl. on-costs" ;
+  95  Wage_eur_per_h = WageBase_eur_per_h * (1 + OncostFrac);
+  96   
+  97  * Truck kinematics if splitting machine vs labor (can be in KTBL sheet)
+  98  Scalar
+  99    Truck_speed_kmh        "km/h (regional haul; KTBL/loggers)"          / 70 /
+ 100    PayloadTruck_t         "t payload (semi)"                            / 25 / ;
+ 101   
+ 102  *------------------------------*
+ 103  * Derived capacities
+ 104  *------------------------------*
+ 105  Scalar
+ 106    PayloadTractor_t "t payload for tractor plus 22 m3 chip box" ;
+ 107  PayloadTractor_t = 22 * BulkDensity_t_per_m3;
+ 108   
+ 109  *------------------------------*
+ 110  * Unit cost components
+ 111  *------------------------------*
+ 112  Scalar
+ 113    C_chip_eurt_mach   "EUR/t chipping (machine-only)"
+ 114    C_hand_eurt_mach   "EUR/t handling (machine-only)" ;
+ 115  C_chip_eurt_mach = (Tractor_eur_per_h + PTOChipper_eur_per_h)
+ 116                   / max(1e-6, Chipper_m3_per_h * BulkDensity_t_per_m3);
+ 117  C_hand_eurt_mach = Bucket_eur_per_t
+ 118                   + FrontLoader_eur_per_h / max(1e-6, Handling_tph);
+ 119   
+ 120  Scalar
+ 121    Labor_chip_hpt  "h per t for chipping"
+ 122    Labor_hand_hpt  "h per t for load plus unload" ;
+ 123  Labor_chip_hpt = 1 / max(1e-6, Chipper_m3_per_h * BulkDensity_t_per_m3);
+ 124  Labor_hand_hpt = 1 / max(1e-6, Handling_tph);
+ 125   
+ 126  Scalar
+ 127    C_chip_eurt_lab   "EUR/t chipping labor"
+ 128    C_hand_eurt_lab   "EUR/t handling labor" ;
+ 129  C_chip_eurt_lab = IncludeLabor * IncludeChipOp * Wage_eur_per_h * Labor_chip_hpt;
+ 130  C_hand_eurt_lab = IncludeLabor * IncludeLoader * Wage_eur_per_h * Labor_hand_hpt;
+ 131   
+ 132  Scalar
+ 133    C_chip_eurt   "EUR/t chipping (machine plus labor)"
+ 134    C_handle_eurt "EUR/t handling (machine plus labor)" ;
+ 135  C_chip_eurt   = C_chip_eurt_mach + C_chip_eurt_lab;
+ 136  C_handle_eurt = C_hand_eurt_mach + C_hand_eurt_lab;
+ 137   
+ 138  Parameter C_surcharge(m) "EUR/t per trip/body (KTBL)";
+ 139  C_surcharge('tractor') = Body_Tractor_eur_per_t ;
+ 140  C_surcharge('truck')   = SemiTrailer_eur_per_t  ;
+ 141   
+ 142  Parameter C_tkm(m) "EUR per t-km by mode" ;
+ 143  Scalar
+ 144    C_tkm_trac_mach  "EUR per t-km tractor machine"
+ 145    C_tkm_trac_lab   "EUR per t-km tractor driver labor"
+ 146    C_tkm_truck_mach "EUR per t-km truck machine (table/placeholder)"
+ 147    C_tkm_truck_lab  "EUR per t-km truck driver labor" ;
+ 148   
+ 149  C_tkm_trac_mach = Tractor_eur_per_h
+ 150                    / max(1e-6, Tractor_speed_kmh * PayloadTractor_t);
+ 151  C_tkm_trac_lab  = IncludeLabor * IncludeDriver * Wage_eur_per_h
+ 152                    / max(1e-6, Tractor_speed_kmh * PayloadTractor_t);
+ 153   
+ 154  C_tkm_truck_mach = 0.12 ;
+ 155  C_tkm_truck_lab  = IncludeLabor * IncludeDriver * AddLaborToTruckTkm
+ 156                    * Wage_eur_per_h / max(1e-6, Truck_speed_kmh * PayloadTruck_t);
+ 157   
+ 158  C_tkm('tractor') = C_tkm_trac_mach + C_tkm_trac_lab;
+ 159  C_tkm('truck')   = C_tkm_truck_mach + C_tkm_truck_lab;
+ 160   
+ 161  *------------------*
+ 162  * Economics (per-plant prices)
+ 163  *------------------*
+ 164  Parameter P_chip(j) "€/t DM paid at plant gate by plant"
+ 165  / j1 25
+ 166  , j2 20 / ;
+ 167   
+ 168  Parameter DemandUB(j) "t/yr max accepted at plant";
+ 169  DemandUB(j) = +inf ;
+ 170   
+ 171  * Scenarios for quick comparison (optional)
+ 172  Set scen / base, highJ1, equal50 /;
+ 173   
+ 174  Parameter Pchip_scen(j,scen) "€/t DM per plant per scenario";
+ 175   
+ 176   
+ 177  display Pchip_scen, GM_total_scen;
+****                   $141           $140
+**** 140  Unknown symbol
+**** 141  Symbol declared but no values have been assigned. Check for missing
+****         data definition, assignment, data loading or implicit assignment
+****         via a solve statement. Suppress with $onImplicitAssign.
+****         A wild shot: You may have spurious commas in the explanatory
+****         text of a declaration. Check symbol reference list.
+ 178   
+ 179   
+ 180  *------------------*
+ 181  * Variables
+ 182  *------------------*
+ 183  Positive Variables
+ 184      x(i,j,m)   "t/yr shipped from i to j by mode m" ;
+ 185   
+ 186  Variables
+ 187      Revenue     "€/yr"
+ 188      VarCost     "€/yr"
+ 189      GrossMargin "€/yr objective" ;
+ 190   
+ 191  *------------------*
+ 192  * Equations
+ 193  *------------------*
+ 194  Equations
+ 195      SupplyLim(i)    "sum x <= Supply(i)"
+ 196      DemandLim(j)    "sum x <= DemandUB(j)"
+ 197      RevenueDef      "Revenue definition"
+ 198      CostDef         "Cost definition (machine+labor)"
+ 199      ObjDef          "GrossMargin = Revenue - VarCost";
+ 200   
+ 201  SupplyLim(i)..   sum((j,m), x(i,j,m)) =l= Supply(i) ;
+ 202  DemandLim(j)..   sum((i,m), x(i,j,m)) =l= DemandUB(j) ;
+ 203   
+ 204  RevenueDef.. Revenue =e= sum((i,j,m), P_chip(j) * x(i,j,m));
+ 205   
+ 206  CostDef..
+ 207      VarCost =e=
+ 208          (C_chip_eurt + C_handle_eurt) * sum((i,j,m), x(i,j,m))
+ 209        + sum((i,j,m), (Backhaul * dist(i,j) * C_tkm(m) + C_surcharge(m)) * x(i,j,m));
+ 210   
+ 211  ObjDef..  GrossMargin =e= Revenue - VarCost ;
+ 212   
+ 213  *------------------*
+ 214  * Solve (Option B)
+ 215  *------------------*
+ 216  option limrow=0, limcol=0;
+ 217  Display A_ha, alphaWood, Y_SR_DM, delta_edge, lambdaLoss, MC, Supply,
+ 218          C_chip_eurt, C_handle_eurt, C_tkm, C_surcharge, Wage_eur_per_h, P_chip;
+ 219   
+ 220  Model Upstream_B "Option B: Maximize profit (with labor toggles)"
+ 221  / SupplyLim, DemandLim, RevenueDef, CostDef, ObjDef /;
+ 222   
+ 223  solve Upstream_B using LP maximizing GrossMargin ;
+****                                                   $257
+**** 257  Solve statement not checked because of previous errors
+ 224   
+ 225  *==============================================================*
+ 226  * Post-solve analytics: location-aware gross margin            *
+ 227  *==============================================================*
+ 228  Parameter
+ 229    UC_lane(i,j,m)  "€/t unit cost per lane i->j,m"
+ 230    UR_j(j)         "€/t unit revenue at plant j"
+ 231    UM_lane(i,j,m)  "€/t unit margin per lane (UR - UC)"
+ 232    Xsol(i,j,m)     "t/yr shipped"
+ 233    Rev_lane(i,j,m) "€/yr revenue by lane"
+ 234    Cost_lane(i,j,m)"€/yr cost by lane"
+ 235    GM_lane(i,j,m)  "€/yr gross margin by lane"
+ 236    Rev_site(j)     "€/yr revenue at plant j"
+ 237    Cost_site(j)    "€/yr cost at plant j"
+ 238    GM_site(j)      "€/yr gross margin at plant j"
+ 239    GM_farm(i)      "€/yr gross margin by farm i"
+ 240    GM_mode(m)      "€/yr gross margin by mode m"
+ 241    GM_total        "€/yr total gross margin"
+ 242    BE_price(i,j,m) "€/t break-even price per lane"
+ 243    BE_radius(j,m)  "km one-way break-even distance (by mode at plant)";
+ 244   
+ 245  UC_lane(i,j,m) = (C_chip_eurt + C_handle_eurt)
+ 246                 + (Backhaul * dist(i,j) * C_tkm(m) + C_surcharge(m));
+ 247  UR_j(j)        = P_chip(j);
+ 248  UM_lane(i,j,m) = UR_j(j) - UC_lane(i,j,m);
+ 249   
+ 250  Xsol(i,j,m)      = x.l(i,j,m);
+****                       $141
+**** 141  Symbol declared but no values have been assigned. Check for missing
+****         data definition, assignment, data loading or implicit assignment
+****         via a solve statement. Suppress with $onImplicitAssign.
+****         A wild shot: You may have spurious commas in the explanatory
+****         text of a declaration. Check symbol reference list.
+ 251  Rev_lane(i,j,m)  = UR_j(j) * Xsol(i,j,m);
+ 252  Cost_lane(i,j,m) = UC_lane(i,j,m) * Xsol(i,j,m);
+ 253  GM_lane(i,j,m)   = Rev_lane(i,j,m) - Cost_lane(i,j,m);
+ 254   
+ 255  Rev_site(j) = sum((i,m), Rev_lane(i,j,m));
+ 256  Cost_site(j)= sum((i,m), Cost_lane(i,j,m));
+ 257  GM_site(j)  = Rev_site(j) - Cost_site(j);
+ 258   
+ 259  GM_farm(i)  = sum((j,m), GM_lane(i,j,m));
+ 260  GM_mode(m)  = sum((i,j), GM_lane(i,j,m));
+ 261  GM_total    = sum((i,j,m), GM_lane(i,j,m));
+ 262   
+ 263  BE_price(i,j,m) = UC_lane(i,j,m);
+ 264  BE_radius(j,m)  = max(0,
+ 265                        (UR_j(j) - (C_chip_eurt + C_handle_eurt) - C_surcharge(m))
+ 266                        / max(1e-6, Backhaul * C_tkm(m)) );
+ 267   
+ 268  Display
+ 269    UR_j, UC_lane, UM_lane,
+ 270    Rev_lane, Cost_lane, GM_lane,
+ 271    Rev_site, Cost_site, GM_site, GM_farm, GM_mode, GM_total,
+ 272    BE_price, BE_radius;
+ 273   
+ 274  put_utility 'log' / '--- Location-aware GM report generated (Option B, labor toggles).';
+ 275   
+ 276  *=== MIRO/Excel outputs ===*
+ 278  Parameter
+ 279    Flow(i,j,m)       "t/yr shipped"
+ 280    FlowIJ(i,j)       "t/yr shipped (sum over modes)"
+ 281    SiteGM(j)         "€/yr GM per plant"
+ 282    TotalGM           "€/yr total GM"
+ 283    MIRO_dist(i,j)    "km distance (copy of dist)"
+ 284    UClane(i,j,m)     "€/t unit cost per lane (copy of UC_lane)"
+ 285    UMlane(i,j,m)     "€/t unit margin per lane (copy of UM_lane)"
+ 286    BErad(j,m)        "km break-even radius (one-way; copy of BE_radius)"
+ 287    Pprice(j)         "€/t chip price (copy of P_chip for charts)"
+ 288  ;
+ 290   
+ 291  Flow(i,j,m)   = x.l(i,j,m);
+ 292  FlowIJ(i,j)   = sum(m, x.l(i,j,m));
+ 293  SiteGM(j)     = sum((i,m), P_chip(j)*x.l(i,j,m)
+ 294                   - ((C_chip_eurt + C_handle_eurt)
+ 295                      + (Backhaul*dist(i,j)*C_tkm(m) + C_surcharge(m)))*x.l(i,j,m));
+ 296  TotalGM       = sum(j, SiteGM(j));
+ 297   
+ 298  MIRO_dist(i,j) = dist(i,j);
+ 299  UClane(i,j,m)  = UC_lane(i,j,m);
+ 300  UMlane(i,j,m)  = UM_lane(i,j,m);
+ 301  BErad(j,m)     = BE_radius(j,m);
+ 302  Pprice(j)      = P_chip(j);
+ 303   
+ 304  execute_unload 'miro_out.gdx',
+ 305    i, j, m,
+ 306    Flow, FlowIJ, SiteGM, TotalGM,
+ 307    MIRO_dist, UClane, UMlane, BErad, Pprice ;
+ 308   
+ 309  execute_unload 'excel_out.gdx',
+ 310     i, j, m,
+ 311     dist, UC_lane, UR_j, UM_lane, BE_price, BE_radius,
+ 312     Rev_lane, Cost_lane, GM_lane, GM_farm, GM_site, GM_mode, GM_total ;
+ 313   
+ 320   
+ 321  *==============================*
+ 322  * Price scenarios (optional)   *
+ 323  *==============================*
+ 324  Set scen / base, highJ1, equal50 /;
+****          $194
+**** 194  Symbol redefined - a second data statement for the same symbol
+****         or a data statement after an assignment
+****         Hint: You could use $onMulti to merge the data from different
+****               data statements or $onMultiR to replace existing data
+****               with data from a later data statement
+ 325   
+ 326  Parameter Pchip_scen(j,scen) "€/t DM per plant per scenario"
+ 327  / j1.base     25,  j2.base     20
+ 328  , j1.highJ1   60,  j2.highJ1   45
+ 329  , j1.equal50  50,  j2.equal50  50 / ;
+ 330   
+ 331  * containers
+ 332  Parameter GM_total_scen(scen)        "€/yr total GM by scenario";
+****                              $318
+**** 318  Domain list redefined - no previous domain list - * assumed
+****         when data was associated with this symbol
+ 333  Parameter Flow_scen(i,j,m,scen)      "t/yr shipped by lane per scenario";
+ 334  Parameter UM_lane_scen(i,j,m,scen)   "€/t unit margin per lane per scenario";
+ 335   
+ 336  loop(scen,
+ 337    * set prices for this scenario
+****    $767
+**** 767  Unexpected symbol will terminate the loop - symbol replaced by )
+ 338    P_chip(j) = Pchip_scen(j,scen);
+****         $195 $97                $96
+****  96  Blank needed between identifier and text
+****        (-or- illegal character in identifier)
+****        (-or- check for missing ';' on previous line)
+****  97  Explanatory text can not start with '$', '=', or '..'
+****        (-or- check for missing ';' on previous line)
+**** 195  Symbol redefined with a different type
+ 339   
+ 340    * solve
+****    $409
+**** 409  Unrecognizable item - skip to find a new statement
+****        looking for a ';' or a key word to get started again
+ 341    solve Upstream_B using LP maximizing GrossMargin ;
+****        $2,748                                       $257
+****   2  Identifier expected
+**** 257  Solve statement not checked because of previous errors
+**** 748  Model name expected - SOLVE modelid ......
+****         rest of statement ignored
+ 342   
+ 343    * recompute analytics for this scenario (same formulas as above)
+****    $409                         $7,140   $36
+****   7  '(' expected
+****  36  '=' or '..' or ':=' or '$=' operator expected
+****      rest of statement ignored
+**** 140  Unknown symbol
+**** 409  Unrecognizable item - skip to find a new statement
+****        looking for a ';' or a key word to get started again
+ 344    Xsol(i,j,m)      = x.l(i,j,m);
+****                            $149,149,149,2,441,2,119,442,10,300
+****   2  Identifier expected
+****   8  ')' expected
+****  10  ',' expected
+**** 119  Number (primary) expected
+**** 149  Uncontrolled set entered as constant
+**** 300  Remaining errors not printed for this line
+**** 441  Expected TO or DOWNTO. The general syntax of a FOR statement is
+****        FOR ( i = start TO/DOWNTO end [BY increment] , statements )
+**** 442  Expected a ',' or BY. The general syntax of a FOR statement is
+****        FOR ( i = start TO/DOWNTO end [BY increment] , statements )
+ 345    UR_j(j)          = P_chip(j);
+ 346    UC_lane(i,j,m)   = (C_chip_eurt + C_handle_eurt)
+ 347                     + (Backhaul * dist(i,j) * C_tkm(m) + C_surcharge(m));
+ 348    UM_lane(i,j,m)   = UR_j(j) - UC_lane(i,j,m);
+ 349    Rev_lane(i,j,m)  = UR_j(j) * Xsol(i,j,m);
+ 350    Cost_lane(i,j,m) = UC_lane(i,j,m) * Xsol(i,j,m);
+ 351    GM_lane(i,j,m)   = Rev_lane(i,j,m) - Cost_lane(i,j,m);
+ 352    GM_total         = sum((i,j,m), GM_lane(i,j,m));
+ 353   
+ 354    * store
+****    $409
+**** 409  Unrecognizable item - skip to find a new statement
+****        looking for a ';' or a key word to get started again
+ 355    GM_total_scen(scen)      = GM_total;
+ 356    Flow_scen(i,j,m,scen)    = Xsol(i,j,m);
+ 357    UM_lane_scen(i,j,m,scen) = UM_lane(i,j,m);
+ 358  );
+****  $408
+**** 408  Too many ),] or }
+ 359   
+ 360  display Pchip_scen, GM_total_scen;
+
+**** 31 ERROR(S)   0 WARNING(S)
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 10/20/25 16:27:19 Page 2
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Include File Summary
+
+
+   SEQ   GLOBAL TYPE      PARENT   LOCAL  FILENAME
+
+     1        1 INPUT          0       0  C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+     2      314 CALL           1     314  gdxdump excel_out.gdx symb=UC_lane    > UC_lane.csv
+     3      315 CALL           1     315  gdxdump excel_out.gdx symb=UM_lane    > UM_lane.csv
+     4      316 CALL           1     316  gdxdump excel_out.gdx symb=BE_radius  > BE_radius.csv
+     5      317 CALL           1     317  gdxdump excel_out.gdx symb=Rev_lane   > Rev_lane.csv
+     6      318 CALL           1     318  gdxdump excel_out.gdx symb=Cost_lane  > Cost_lane.csv
+     7      319 CALL           1     319  gdxdump excel_out.gdx symb=GM_lane    > GM_lane.csv
+
+
+COMPILATION TIME     =        0.656 SECONDS      3 MB  49.6.1 55d34574 WEX-WEI
+
+
+USER: Large MUD - 20 User License                    S231215|0002AN-WIN
+      Leibniz-Zentrum fuer Agrarlandschaftsforschung (ZALF) e. V.DC8734
+      License for teaching and research at degree granting institutions
+
+
+**** FILE SUMMARY
+
+Input      C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+Output     C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.lst
+
+**** USER ERROR(S) ENCOUNTERED

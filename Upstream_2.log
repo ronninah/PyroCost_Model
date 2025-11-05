@@ -1,0 +1,133 @@
+
+--- Job Upstream_5.gms Start 10/20/25 16:27:19 49.6.1 55d34574 WEX-WEI x86 64bit/MS Windows
+--- Applying:
+    C:\GAMS\49\gmsprmNT.txt
+--- GAMS Parameters defined
+    Input C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    PageSize 0
+    ScrDir C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\225a\
+    SysDir C:\GAMS\49\
+    LogOption 3
+    ErrMsg 1
+    ErrorLog 99
+    IDE 1
+    LstTitleLeftAligned 1
+Licensee: Large MUD - 20 User License                    S231215|0002AN-WIN
+          Leibniz-Zentrum fuer Agrarlandschaftsforschung (ZALF) e. V.DC8734
+          C:\Users\ronnie\Documents\GAMS\gamslice.txt
+          License Admin: Peter Zander, Peter.Zander@zalf.de                
+          The maintenance period of the license will expire on Apr 03, 2026
+System information: 10 physical cores and 16 Gb memory detected
+GAMS 49.6.1   Copyright (C) 1987-2025 GAMS Development. All rights reserved
+--- Starting compilation
+--- Upstream_5.gms(177) 3 Mb 2 Errors
+*** Error 141 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Symbol declared but no values have been assigned. Check for missing
+       data definition, assignment, data loading or implicit assignment
+       via a solve statement. Suppress with $onImplicitAssign.
+       A wild shot: You may have spurious commas in the explanatory
+       text of a declaration. Check symbol reference list.
+*** Error 140 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Unknown symbol
+--- Upstream_5.gms(223) 3 Mb 3 Errors
+*** Error 257 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Solve statement not checked because of previous errors
+--- Upstream_5.gms(250) 3 Mb 4 Errors
+*** Error 141 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Symbol declared but no values have been assigned. Check for missing
+       data definition, assignment, data loading or implicit assignment
+       via a solve statement. Suppress with $onImplicitAssign.
+       A wild shot: You may have spurious commas in the explanatory
+       text of a declaration. Check symbol reference list.
+--- Upstream_5.gms(314) 3 Mb
+--- call gdxdump excel_out.gdx symb=UC_lane    > UC_lane.csv
+--- Upstream_5.gms(315) 3 Mb
+--- call gdxdump excel_out.gdx symb=UM_lane    > UM_lane.csv
+--- Upstream_5.gms(316) 3 Mb
+--- call gdxdump excel_out.gdx symb=BE_radius  > BE_radius.csv
+--- Upstream_5.gms(317) 3 Mb
+--- call gdxdump excel_out.gdx symb=Rev_lane   > Rev_lane.csv
+--- Upstream_5.gms(318) 3 Mb
+--- call gdxdump excel_out.gdx symb=Cost_lane  > Cost_lane.csv
+--- Upstream_5.gms(319) 3 Mb
+--- call gdxdump excel_out.gdx symb=GM_lane    > GM_lane.csv
+--- Upstream_5.gms(324) 3 Mb 5 Errors
+*** Error 194 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Symbol redefined - a second data statement for the same symbol
+       or a data statement after an assignment
+       Hint: You could use $onMulti to merge the data from different
+             data statements or $onMultiR to replace existing data
+             with data from a later data statement
+--- Upstream_5.gms(332) 3 Mb 6 Errors
+*** Error 318 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Domain list redefined - no previous domain list - * assumed
+       when data was associated with this symbol
+--- Upstream_5.gms(337) 3 Mb 7 Errors
+*** Error 767 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Unexpected symbol will terminate the loop - symbol replaced by )
+--- Upstream_5.gms(338) 3 Mb 10 Errors
+*** Error 195 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Symbol redefined with a different type
+*** Error  97 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Explanatory text can not start with '$', '=', or '..'
+      (-or- check for missing ';' on previous line)
+*** Error  96 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Blank needed between identifier and text
+      (-or- illegal character in identifier)
+      (-or- check for missing ';' on previous line)
+--- Upstream_5.gms(340) 3 Mb 11 Errors
+*** Error 409 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Unrecognizable item - skip to find a new statement
+      looking for a ';' or a key word to get started again
+--- Upstream_5.gms(341) 3 Mb 14 Errors
+*** Error   2 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Identifier expected
+*** Error 748 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Model name expected - SOLVE modelid ......
+       rest of statement ignored
+*** Error 257 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Solve statement not checked because of previous errors
+--- Upstream_5.gms(343) 3 Mb 18 Errors
+*** Error 409 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Unrecognizable item - skip to find a new statement
+      looking for a ';' or a key word to get started again
+*** Error   7 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    '(' expected
+*** Error 140 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Unknown symbol
+*** Error  36 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    '=' or '..' or ':=' or '$=' operator expected
+    rest of statement ignored
+--- Upstream_5.gms(344) 3 Mb 29 Errors
+*** Error 149 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Uncontrolled set entered as constant
+*** Error 149 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Uncontrolled set entered as constant
+*** Error 149 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Uncontrolled set entered as constant
+*** Error   2 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Identifier expected
+*** Error 441 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Expected TO or DOWNTO. The general syntax of a FOR statement is
+      FOR ( i = start TO/DOWNTO end [BY increment] , statements )
+*** Error   2 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Identifier expected
+*** Error 119 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Number (primary) expected
+*** Error 442 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Expected a ',' or BY. The general syntax of a FOR statement is
+      FOR ( i = start TO/DOWNTO end [BY increment] , statements )
+*** Error  10 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    ',' expected
+*** Error 300 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Remaining errors not printed for this line
+--- Upstream_5.gms(354) 3 Mb 30 Errors
+*** Error 409 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Unrecognizable item - skip to find a new statement
+      looking for a ';' or a key word to get started again
+--- Upstream_5.gms(358) 3 Mb 31 Errors
+*** Error 408 in C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Upstream_5.gms
+    Too many ),] or }
+--- Upstream_5.gms(360) 3 Mb 31 Errors
+*** Status: Compilation error(s)
+--- Job Upstream_5.gms Stop 10/20/25 16:27:20 elapsed 0:00:00.689

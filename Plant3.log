@@ -1,0 +1,30 @@
+
+--- Job Plantflip2.gms Start 11/04/25 11:58:39 49.6.1 55d34574 WEX-WEI x86 64bit/MS Windows
+--- Applying:
+    C:\GAMS\49\gmsprmNT.txt
+--- GAMS Parameters defined
+    Input C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Plantflip2.gms
+    PageSize 0
+    ScrDir C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\225a\
+    SysDir C:\GAMS\49\
+    LogOption 3
+    ErrMsg 1
+    ErrorLog 99
+    IDE 1
+    LstTitleLeftAligned 1
+Licensee: Large MUD - 20 User License                    S231215|0002AN-WIN
+          Leibniz-Zentrum fuer Agrarlandschaftsforschung (ZALF) e. V.DC8734
+          C:\Users\ronnie\Documents\GAMS\gamslice.txt
+          License Admin: Peter Zander, Peter.Zander@zalf.de                
+          The maintenance period of the license will expire on Apr 03, 2026
+System information: 10 physical cores and 16 Gb memory detected
+GAMS 49.6.1   Copyright (C) 1987-2025 GAMS Development. All rights reserved
+--- Starting compilation
+--- Plantflip2.gms(217) 3 Mb
+--- Starting execution: elapsed 0:00:00.032
+--- Plantflip2.gms(217) 6 Mb
+--- Putfile fo C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\plant_first_payable_radius_j1.csv
+--- Putfile fdist C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\distance_payable_curve_j1.csv
+--- Putfile fpchar C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\payable_vs_biochar_j1.csv
+*** Status: Normal completion
+--- Job Plantflip2.gms Stop 11/04/25 11:58:39 elapsed 0:00:00.064

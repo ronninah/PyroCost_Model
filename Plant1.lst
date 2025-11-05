@@ -1,0 +1,221 @@
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 10/20/25 17:34:09 Page 1
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+C o m p i l a t i o n
+
+
+   1  Set p / j1 /
+   2      e / elec, heat / ;
+   3   
+   4  Set i / i1*i3 /, jn / j1*j2 /;
+   5   
+   6  Parameter
+   7     Qin_DM_h(p)       "t DM/h"
+   8     Y_char(p)         "t char per t DM"
+   9     E_net_kW(p,e)     "kW"
+  10     Hop_year          "h/year"
+  11     P_char            "EUR/t"
+  12     P_el              "EUR/kWh"
+  13     P_heat            "EUR/kWh_th"
+  14     P_chipDM_deliv(p) "EUR/t DM"
+  15     n_ops(p)          "operators per shift"
+  16     w_hour            "EUR/h"
+  17     OM_hour(p)        "EUR/h"
+  18     P_buy             "EUR/kWh"
+  19     E_buy_kWh(p)      "kWh/h" ;
+  20   
+  21  Qin_DM_h('j1')        = 0.299 ;
+  22  Y_char('j1')          = 0.25  ;
+  23  E_net_kW('j1','elec') = 130   ;
+  24  E_net_kW('j1','heat') = 200   ;
+  25  Hop_year              = 8000  ;
+  26   
+  27  P_char                = 600   ;
+  28  P_el                  = 0.11  ;
+  29  P_heat                = 0.06  ;
+  30  P_chipDM_deliv('j1')  = 25    ;
+  31   
+  32  n_ops('j1')           = 1     ;
+  33  w_hour                = 28    ;
+  34  OM_hour('j1')         = 30    ;
+  35  P_buy                 = 0.28  ;
+  36  E_buy_kWh('j1')       = 0     ;
+  37   
+  38  Scalar MC_asrec "Moisture content of as-received chips" / 0.35 / ;
+  39   
+  40  Parameter
+  41      FlowIJ(i,jn) "t/yr as-received shipped (from upstream)"
+  42      Pprice(jn)   "€/t chip price at plant (from upstream)" ;
+  43   
+GDXIN   C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\miro_out.gdx
+--- LOAD  FlowIJ = 5:FlowIJ
+--- LOAD  Pprice = 12:Pprice
+  49   
+  50  Scalar Supply_asrec_j1 "t/yr as-received to j1"
+  51         Sup_DM_yr       "t DM/yr from upstream to j1"
+  52         Sup_DM_h        "t DM/h equivalent from upstream" ;
+  53   
+  54  Supply_asrec_j1 = sum(i, FlowIJ(i,'j1')) ;
+  55  Sup_DM_yr       = Supply_asrec_j1 * (1 - MC_asrec) ;
+  56  Sup_DM_h        = Sup_DM_yr / Hop_year ;
+  57   
+  58  Scalar Cap_DM_h      "t DM/h brochure capacity"
+  59         Cap_DM_yr     "t DM/year brochure capacity"
+  60         Cap_asrec_yr  "t/yr as-received brochure capacity"
+  61         Diff_DM_h     "t DM/h: capacity minus upstream"
+  62         Diff_asrec_yr "t/yr as-received: capacity minus upstream"
+  63         Util_DM       "DM-based utilization (0..1)" ;
+  64   
+  65  Cap_DM_h      = Qin_DM_h('j1') ;
+  66  Cap_DM_yr     = Cap_DM_h * Hop_year ;
+  67  Cap_asrec_yr  = Cap_DM_yr / (1 - MC_asrec) ;
+  68  Diff_DM_h     = Cap_DM_h - Sup_DM_h ;
+  69  Diff_asrec_yr = Cap_asrec_yr - Supply_asrec_j1 ;
+  70  Util_DM       = 0 ;
+  71  Util_DM$(Cap_DM_h>0) = min(1, Sup_DM_h/Cap_DM_h) ;
+  72   
+  73  Parameter
+  74     Qchar_h(p)      "t/h"
+  75     Rchar(p)        "EUR/h"
+  76     Rel(p)          "EUR/h"
+  77     Rheat(p)        "EUR/h"
+  78     Rev(p)          "EUR/h"
+  79     Cfs(p)          "EUR/h"
+  80     Clab(p)         "EUR/h"
+  81     Com(p)          "EUR/h"
+  82     Cbuy(p)         "EUR/h"
+  83     GM(p)           "EUR/h"
+  84     GM_per_tDM(p)   "EUR/t DM"
+  85     GM_per_year(p)  "EUR/year" ;
+  86   
+  87  Qchar_h(p)    = Y_char(p) * Qin_DM_h(p) ;
+  88  Rchar(p)      = P_char * Qchar_h(p) ;
+  89  Rel(p)        = P_el   * E_net_kW(p,'elec') ;
+  90  Rheat(p)      = P_heat * E_net_kW(p,'heat') ;
+  91  Rev(p)        = Rchar(p) + Rel(p) + Rheat(p) ;
+  92   
+  93  Cfs(p)        = Qin_DM_h(p) * P_chipDM_deliv(p) ;
+  94  Clab(p)       = n_ops(p) * w_hour ;
+  95  Com(p)        = OM_hour(p) ;
+  96  Cbuy(p)       = P_buy * E_buy_kWh(p) ;
+  97   
+  98  GM(p)         = Rev(p) - (Cfs(p) + Clab(p) + Com(p) + Cbuy(p)) ;
+  99  GM_per_tDM(p) = GM(p) / Qin_DM_h(p) ;
+ 100  GM_per_year(p)= GM(p) * Hop_year ;
+ 101   
+ 102  Display Rev, Cfs, Clab, Com, Cbuy, GM, GM_per_tDM, GM_per_year ;
+ 103   
+ 104  Scalar Pchar_BE "EUR/t"
+ 105         Pchip_BE "EUR/t DM" ;
+ 106   
+ 107  Pchar_BE = ( Cfs('j1') + Clab('j1') + Com('j1') + Cbuy('j1')
+ 108               - ( Rel('j1') + Rheat('j1') ) )
+ 109             / ( Y_char('j1') * Qin_DM_h('j1') ) ;
+ 110   
+ 111  Pchip_BE = ( Rchar('j1') + Rel('j1') + Rheat('j1')
+ 112               - ( Clab('j1') + Com('j1') + Cbuy('j1') ) )
+ 113             / Qin_DM_h('j1') ;
+ 114   
+ 115  Display Pchar_BE, Pchip_BE ;
+ 116   
+ 117  File f1 /plant_modeA_kpi_j1.csv/ ; put f1 ;
+ 118  put 'plant,P_char,E_net_kW,H_use_kW,P_chipDM_deliv,Rev,Cfs,Clab,Com,Cbuy,GM,GM_per_tDM,GM_per_year'/;
+ 119  put 'j1',',', P_char:0:2, ',', E_net_kW('j1','elec'):0:0, ',', E_net_kW('j1','heat'):0:0, ',',
+ 120      P_chipDM_deliv('j1'):0:2, ',', Rev('j1'):0:2, ',', Cfs('j1'):0:2, ',', Clab('j1'):0:2, ',',
+ 121      Com('j1'):0:2, ',', Cbuy('j1'):0:2, ',', GM('j1'):0:2, ',', GM_per_tDM('j1'):0:2, ',',
+ 122      GM_per_year('j1'):0:0 / ;
+ 123  putclose f1 ;
+ 124   
+ 125  File f2 /plant_modeA_breakeven_j1.csv/ ; put f2 ;
+ 126  put 'Pchar_BE_EURt,Pchip_BE_EURtDM'/;
+ 127  put Pchar_BE:0:2 ',' Pchip_BE:0:2 /;
+ 128  putclose f2 ;
+ 129   
+ 130  File f3 /supply_vs_capacity_j1.csv/ ; put f3 ;
+ 131  put 'Cap_DM_h,Cap_DM_yr,Cap_asrec_yr,Sup_asrec_yr,Sup_DM_yr,Sup_DM_h,Diff_DM_h,Diff_asrec_yr,Util_DM'/;
+ 132  put Cap_DM_h:0:6 ',' Cap_DM_yr:0:2 ',' Cap_asrec_yr:0:2 ',' Supply_asrec_j1:0:2 ','
+ 133      Sup_DM_yr:0:2 ',' Sup_DM_h:0:6 ',' Diff_DM_h:0:6 ',' Diff_asrec_yr:0:2 ',' Util_DM:0:4 /;
+ 134  putclose f3 ;
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 10/20/25 17:34:09 Page 2
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+Include File Summary
+
+
+   SEQ   GLOBAL TYPE      PARENT   LOCAL  FILENAME
+
+     1        1 INPUT          0       0  C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Plant1.gms
+     2       44 IF EXIST       1      44  C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\miro_out.gdx
+     3       45 IF EXIST       1      45  C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\miro_out.gdx
+     4       45 GDXIN          1      45  C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\miro_out.gdx
+     5       46 IF EXIST       1      46  C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\miro_out.gdx
+     6       47 IF EXIST       1      47  C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\miro_out.gdx
+     7       48 IF EXIST       1      48  C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\miro_out.gdx
+
+
+COMPILATION TIME     =        0.016 SECONDS      3 MB  49.6.1 55d34574 WEX-WEI
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 10/20/25 17:34:09 Page 3
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+E x e c u t i o n
+
+
+----    102 PARAMETER Rev  EUR/h
+
+j1 71.150
+
+
+----    102 PARAMETER Cfs  EUR/h
+
+j1 7.475
+
+
+----    102 PARAMETER Clab  EUR/h
+
+j1 28.000
+
+
+----    102 PARAMETER Com  EUR/h
+
+j1 30.000
+
+
+----    102 PARAMETER Cbuy  EUR/h
+
+                      ( ALL       0.000 )
+
+
+----    102 PARAMETER GM  EUR/h
+
+j1 5.675
+
+
+----    102 PARAMETER GM_per_tDM  EUR/t DM
+
+j1 18.980
+
+
+----    102 PARAMETER GM_per_year  EUR/year
+
+j1 45400.000
+
+
+----    115 PARAMETER Pchar_BE             =      524.080  EUR/t
+            PARAMETER Pchip_BE             =       43.980  EUR/t DM
+
+**** REPORT FILE SUMMARY
+
+f1 C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\plant_modeA_kpi_j1.csv
+f2 C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\plant_modeA_breakeven_j1.csv
+f3 C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\supply_vs_capacity_j1.csv
+
+
+EXECUTION TIME       =        0.000 SECONDS      4 MB  49.6.1 55d34574 WEX-WEI
+
+
+USER: Large MUD - 20 User License                    S231215|0002AN-WIN
+      Leibniz-Zentrum fuer Agrarlandschaftsforschung (ZALF) e. V.DC8734
+      License for teaching and research at degree granting institutions
+
+
+**** FILE SUMMARY
+
+Input      C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Plant1.gms
+Output     C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Plant1.lst
