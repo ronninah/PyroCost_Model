@@ -1,0 +1,377 @@
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 11/18/25 13:58:22 Page 1
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+C o m p i l a t i o n
+
+
+   1  *=========== Plant-first payable price & radius (j1) ===========*
+   2   
+   3  Set p / j1 /, e / elec, heat /, m / tractor, truck / ;
+   4   
+   5  *--- Plant brochure & economics ---
+   6  Parameter
+   7     Qin_DM_h(p)       "t DM/h"
+   8     Y_char(p)         "t char per t DM"
+   9     E_net_kW(p,e)     "kW"
+  10     Hop_year          "h/year"
+  11     P_char            "EUR/t"
+  12     P_el              "EUR/kWh"
+  13     P_heat            "EUR/kWh_th"
+  14     n_ops(p)          "operators per shift"
+  15     w_hour            "EUR/h"
+  16     OM_hour(p)        "EUR/h"
+  17     P_buy             "EUR/kWh"
+  18     E_buy_kWh(p)      "kWh/h"
+  19     MarginTarget      "EUR/h target gross margin (0 = breakeven)" ;
+  20   
+  21  Qin_DM_h('j1')        = 0.299 ;
+  22  Y_char('j1')          = 0.25  ;
+  23  E_net_kW('j1','elec') = 130   ;
+  24  E_net_kW('j1','heat') = 200   ;
+  25  Hop_year              = 8000  ;
+  26   
+  27  P_char                = 550   ;
+  28  P_el                  = 0.11  ;
+  29  P_heat                = 0.06  ;
+  30   
+  31  n_ops('j1')           = 1     ;
+  32  w_hour                = 28    ;
+  33  OM_hour('j1')         = 30    ;
+  34  P_buy                 = 0.28  ;
+  35  E_buy_kWh('j1')       = 0     ;
+  36  MarginTarget          = 0     ;
+  37   
+  38  Scalar MC_asrec "moisture content of delivered chips (fraction)" / 0.25 / ;
+  39   
+  40  *--- Revenues & non-feedstock costs (hourly) ---
+  41  Parameter
+  42     Qchar_h(p)  "t/h"
+  43     Rchar(p)    "EUR/h"
+  44     Rel(p)      "EUR/h"
+  45     Rheat(p)    "EUR/h"
+  46     Rev(p)      "EUR/h"
+  47     Clab(p)     "EUR/h"
+  48     Com(p)      "EUR/h"
+  49     Cbuy(p)     "EUR/h" ;
+  50   
+  51  Qchar_h(p) = Y_char(p) * Qin_DM_h(p) ;
+  52  Rchar(p)   = P_char * Qchar_h(p) ;
+  53  Rel(p)     = P_el   * E_net_kW(p,'elec') ;
+  54  Rheat(p)   = P_heat * E_net_kW(p,'heat') ;
+  55  Rev(p)     = Rchar(p) + Rel(p) + Rheat(p) ;
+  56   
+  57  Clab(p) = n_ops(p) * w_hour ;
+  58  Com(p)  = OM_hour(p) ;
+  59  Cbuy(p) = P_buy * E_buy_kWh(p) ;
+  60   
+  61  *--- Max payable chip price at plant gate (EUR/t DM) ---
+  62  Parameter P_chip_payable(p) "EUR/t DM, breakeven w.r.t. MarginTarget" ;
+  63  P_chip_payable(p) = ( Rev(p) - (Clab(p) + Com(p) + Cbuy(p)) - MarginTarget ) / Qin_DM_h(p) ;
+  64   
+  65  *=========== KTBL-style cost building blocks (same structure as upstream) ===========
+  66  Scalar
+  67    Tractor_eur_per_h      "€/h" / 41.84 /
+  68    PTOChipper_eur_per_h   "€/h" / 22.63 /
+  69    Body_Tractor_eur_per_t "€/t" / 0.82  /
+  70    SemiTrailer_eur_per_t  "€/t" / 0.89  /
+  71    Bucket_eur_per_t       "€/t" / 0.39  /
+  72    FrontLoader_eur_per_h  "€/h" / 8.68  /
+  73    Tractor_speed_kmh      "km/h" / 40 /
+  74    Chipper_m3_per_h       "m3/h" / 25 /
+  75    BulkDensity_t_per_m3   "t/m3" / 0.30 /
+  76    Handling_tph           "t/h"  / 20  /
+  77    Truck_speed_kmh        "km/h" / 70 /
+  78    PayloadTruck_t         "t"    / 25 /
+  79    Backhaul               "1=one-way,2=round-trip" / 2 / ;
+  80   
+  81  Scalar PayloadTractor_t "t payload for 22 m3 chip box" ;
+  82  PayloadTractor_t = 22 * BulkDensity_t_per_m3 ;
+  83   
+  84  * Labor toggles and wage (as in upstream)
+  85  Scalar IncludeLabor / 1 /, IncludeChipOp / 1 /, IncludeLoader / 1 /, IncludeDriver / 1 /, AddLaborToTruckTkm / 1 / ;
+  86  Scalar WageBase_eur_per_h / 12.82 /, OncostFrac / 0.22 /, Wage_eur_per_h ;
+  87  Wage_eur_per_h = WageBase_eur_per_h * (1 + OncostFrac) ;
+  88   
+  89  * Chipping & handling unit costs (EUR/t)
+  90  Scalar
+  91    C_chip_eurt_mach "EUR/t"
+  92    C_hand_eurt_mach "EUR/t"
+  93    Labor_chip_hpt   "h/t"
+  94    Labor_hand_hpt   "h/t"
+  95    C_chip_eurt      "EUR/t"
+  96    C_handle_eurt    "EUR/t" ;
+  97   
+  98  C_chip_eurt_mach = (Tractor_eur_per_h + PTOChipper_eur_per_h) / (Chipper_m3_per_h * BulkDensity_t_per_m3) ;
+  99  C_hand_eurt_mach = Bucket_eur_per_t + FrontLoader_eur_per_h / Handling_tph ;
+ 100  Labor_chip_hpt   = 1 / (Chipper_m3_per_h * BulkDensity_t_per_m3) ;
+ 101  Labor_hand_hpt   = 1 / Handling_tph ;
+ 102  C_chip_eurt      = C_chip_eurt_mach + IncludeLabor*IncludeChipOp*Wage_eur_per_h*Labor_chip_hpt ;
+ 103  C_handle_eurt    = C_hand_eurt_mach + IncludeLabor*IncludeLoader*Wage_eur_per_h*Labor_hand_hpt ;
+ 104   
+ 105  Parameter C_surcharge(m) "EUR/t per trip/body" ;
+ 106  C_surcharge('tractor') = Body_Tractor_eur_per_t ;
+ 107  C_surcharge('truck')   = SemiTrailer_eur_per_t  ;
+ 108   
+ 109  Parameter C_tkm(m) "EUR per t-km by mode" ;
+ 110  Scalar C_tkm_truck_mach / 0.12 / ;
+ 111  C_tkm('tractor') = Tractor_eur_per_h/(Tractor_speed_kmh*PayloadTractor_t)
+ 112                   + IncludeLabor*IncludeDriver*Wage_eur_per_h/(Tractor_speed_kmh*PayloadTractor_t) ;
+ 113  C_tkm('truck')   = C_tkm_truck_mach
+ 114                   + IncludeLabor*IncludeDriver*AddLaborToTruckTkm*Wage_eur_per_h/(Truck_speed_kmh*PayloadTruck_t) ;
+ 115   
+ 116  *--- Break-even one-way radius by mode (km) for plant j1 ---
+ 117  Parameter BE_radius(p,m) "km one-way" ;
+ 118  BE_radius(p,m) = max(0,
+ 119     ( P_chip_payable(p) - (C_chip_eurt + C_handle_eurt + C_surcharge(m)) )
+ 120     / ( Backhaul * C_tkm(m) )
+ 121  ) ;
+ 122   
+ 123  *--- Helpful annual KPIs at capacity ---
+ 124  Parameter
+ 125    PayableBudget_yr(p) "EUR/yr payable to feedstock at capacity"
+ 126    CharOutput_yr(p)    "t/yr"
+ 127    Qin_asrec_yr(p)     "t/yr as-received needed at capacity" ;
+ 128   
+ 129  PayableBudget_yr(p) = P_chip_payable(p) * Qin_DM_h(p) * Hop_year ;
+ 130  CharOutput_yr(p)    = Y_char(p) * Qin_DM_h(p) * Hop_year ;
+ 131  Qin_asrec_yr(p)     = Qin_DM_h(p) * Hop_year / (1 - MC_asrec) ;
+ 132   
+ 133  Parameter P_chip_payable_asrec(p) "EUR/t as-received at MC_asrec";
+ 134  P_chip_payable_asrec(p) = P_chip_payable(p) * (1 - MC_asrec);
+ 135   
+ 136   
+ 137  Display P_chip_payable, P_chip_payable_asrec, BE_radius, PayableBudget_yr, CharOutput_yr, Qin_asrec_yr ;
+ 138   
+ 139  *--- CSV output ---
+ 140  File fo /plant_first_payable_radius_j1.csv/ ; put fo ;
+ 141  put 'plant,P_chip_payable_EUR_per_tDM,P_chip_payable_EUR_per_t_asrec,BE_radius_tractor_km,BE_radius_truck_km,PayableBudget_yr_EUR,CharOutput_yr_t,Qin_asrec_yr_t' / ;
+ 142  put 'j1',',', P_chip_payable('j1'):0:2, ',', P_chip_payable_asrec('j1'):0:2, ',',
+ 143      BE_radius('j1','tractor'):0:2, ',', BE_radius('j1','truck'):0:2, ',',
+ 144      PayableBudget_yr('j1'):0:0, ',', CharOutput_yr('j1'):0:2, ',', Qin_asrec_yr('j1'):0:2 / ;
+ 145  putclose fo ;
+ 146   
+ 147   
+ 148  * ===== Curve 1: Delivered cost (as-received) vs distance, plus payable line
+ 149  Set r / r0*r200 /;
+ 150  Alias (r, rr);
+ 151  Set mplot(m) / tractor, truck /;
+ 152   
+ 153  Scalar rstep / 1 /;
+ 154   
+ 155  Parameter km(r)           "distance grid (km)"
+ 156            Cost_asrec(r,m) "EUR/t as-received delivered cost by mode"
+ 157            Pay_asrec(r)    "EUR/t as-received payable (flat line)"
+ 158            Diff(r,m)       "abs gap between cost and payable"
+ 159            IsBE(r,m)       "1 on nearest intersection point per mode";
+ 160   
+ 161  km(r)        = (ord(r)-1)*rstep;
+ 162  Pay_asrec(r) = P_chip_payable_asrec('j1');
+ 163   
+ 164  Cost_asrec(r,m) =
+ 165        ( (C_chip_eurt + C_handle_eurt + C_surcharge(m)) * (1 - MC_asrec) )
+ 166      + ( Backhaul * C_tkm(m) * km(r) * (1 - MC_asrec) );
+ 167   
+ 168  Diff(r,m) = abs(Cost_asrec(r,m) - Pay_asrec(r));
+ 169  IsBE(r,m) = 0;
+ 170  IsBE(r,m)$( Diff(r,m) = smin(rr, Diff(rr,m)) ) = 1;
+ 171   
+ 172  File fdist /distance_payable_curve_j1.csv/ ; put fdist ;
+ 173  put 'km,mode,cost_asrec_eurpt,payable_asrec_eurpt,is_be' /;
+ 174  loop(r,
+ 175    loop(mplot,
+ 176      put km(r):0:0 ',' mplot.tl:0 ',' Cost_asrec(r,mplot):0:2 ','
+ 177          Pay_asrec(r):0:2 ',' IsBE(r,mplot):0:0 /;
+ 178    );
+ 179  );
+ 180  putclose fdist ;
+ 181   
+ 182  * ===== Curve 2: Payable chip price vs biochar price (and BE radius)
+ 183  Set bp / bp1*bp11 /;
+ 184  Scalar dP / 50 /;
+ 185   
+ 186  Parameter Pchar_grid(bp)    "EUR/t biochar grid"
+ 187            Pchip_pay_DM(bp)  "EUR/t DM payable"
+ 188            Pchip_pay_asrec(bp) "EUR/t as-received payable"
+ 189            R_el_h            "EUR/h from electricity"
+ 190            R_ht_h            "EUR/h from heat"
+ 191            QinDM_h           "t DM/h"
+ 192            BE_rad_grid(bp,m) "km one-way BE radius by mode";
+ 193   
+ 194  R_el_h   = P_el   * E_net_kW('j1','elec');
+ 195  R_ht_h   = P_heat * E_net_kW('j1','heat');
+ 196  QinDM_h  = Qin_DM_h('j1');
+ 197   
+ 198  Pchar_grid(bp) = P_char + (ord(bp)-ceil(card(bp)/2))*dP;
+ 199   
+ 200  Pchip_pay_DM(bp) =
+ 201    ( (Pchar_grid(bp)*Y_char('j1')*QinDM_h) + R_el_h + R_ht_h - (Clab('j1') + Com('j1') + Cbuy('j1')) )
+ 202    / max(1e-9, QinDM_h);
+ 203   
+ 204  Pchip_pay_asrec(bp) = Pchip_pay_DM(bp) * (1 - MC_asrec);
+ 205   
+ 206  BE_rad_grid(bp,m) = max(0,
+ 207     ( Pchip_pay_DM(bp) - (C_chip_eurt + C_handle_eurt + C_surcharge(m)) )
+ 208     / max(1e-9, Backhaul*C_tkm(m))
+ 209  );
+ 210   
+ 211  File fpchar /payable_vs_biochar_j1.csv/ ; put fpchar ;
+ 212  put 'Pchar_eurpt,Pchip_pay_DM_eurptDM,Pchip_pay_asrec_eurpt,BE_radius_tractor_km,BE_radius_truck_km' /;
+ 213  loop(bp,
+ 214    put Pchar_grid(bp):0:2 ',' Pchip_pay_DM(bp):0:2 ',' Pchip_pay_asrec(bp):0:2 ','
+ 215        BE_rad_grid(bp,'tractor'):0:2 ',' BE_rad_grid(bp,'truck'):0:2 /;
+ 216  );
+ 217  putclose fpchar ;
+ 218   
+ 219  *==============================================================*
+ 220  *  DOWNSTREAM & CARBON MARKET EXTENSION (PLANT-FIRST MODEL)    *
+ 221  *  Adds:                                                       *
+ 222  *    - Carbon price P_CO2 (€/t CO2-eq)                         *
+ 223  *    - CO2 balance per year from biochar                       *
+ 224  *    - Carbon credit revenue per year                          *
+ 225  *    - Payable chip price incl. carbon (DM & as-received)      *
+ 226  *    - CSV for Streamlit / plotting                            *
+ 227  *--------------------------------------------------------------*
+ 228  *  Assumptions / defaults:                                     *
+ 229  *  - CO2eq_per_tchar = 2.6 t CO2-eq per t biochar              *
+ 230  *    ≈ 70% C in biochar * 44/12 (CO2/C). To be replaced later  *
+ 231  *    by proper LCA results.                                    *
+ 232  *  - P_CO2 = 80 €/t CO2-eq (within recent EU ETS range).       *
+ 233  *==============================================================*
+ 234   
+ 235  Scalar
+ 236     P_CO2            "Carbon price (EUR/t CO2-eq) - EDIT LATER OR OVERRIDE IN STREAMLIT" / 80 /
+ 237     CO2eq_per_tchar  "Net CO2-eq per t biochar (t CO2-eq / t char; sign can be +/-)"    / 2.6 / ;
+ 238   
+ 239  *--- Annual CO2 balance and carbon revenue --------------------*
+ 240  Parameter
+ 241     CO2_balance_yr(p)   "Biochar-related CO2-eq balance (t CO2-eq/yr) at plant"
+ 242     CO2_rev_yr(p)       "Carbon credit revenue (EUR/yr) from biochar"
+ 243     P_chip_payable_DM_wC(p)      "Payable chip price incl. carbon (EUR/t DM)"
+ 244     P_chip_payable_asrec_wC(p)   "Payable chip price incl. carbon (EUR/t as-received)" ;
+ 245   
+ 246  * CharOutput_yr(p) already defined above as: Y_char(p)*Qin_DM_h(p)*Hop_year
+ 247  CO2_balance_yr(p) = CharOutput_yr(p) * CO2eq_per_tchar;
+ 248  CO2_rev_yr(p)     = CO2_balance_yr(p) * P_CO2;
+ 249   
+ 250  * Increment on payable chip price (EUR/t DM) coming from carbon:
+ 251  *   delta_P_chip_DM = Y_char(p) * CO2eq_per_tchar * P_CO2
+ 252  P_chip_payable_DM_wC(p) = P_chip_payable(p)
+ 253                          + Y_char(p) * CO2eq_per_tchar * P_CO2 ;
+ 254   
+ 255  * Convert to as-received basis using MC_asrec from above
+ 256  P_chip_payable_asrec_wC(p) = P_chip_payable_DM_wC(p) * (1 - MC_asrec);
+ 257   
+ 258  *--- Optional: total annual "extended" gross margin  ----------*
+ 259  * If you want: GM_ext_yr = GM_base_yr + CO2_rev_yr
+ 260  * GM_base_yr is implicit in your previous calculations via Rev and PayableBudget_yr.
+ 261  * Here we only expose the carbon part cleanly.
+ 262   
+ 263  Parameter
+ 264     CarbonPremium_DM(p)     "Carbon premium on chip price (EUR/t DM)"
+ 265     CarbonPremium_char(p)   "Carbon premium on biochar price (EUR/t char)" ;
+ 266   
+ 267  CarbonPremium_DM(p)   = Y_char(p) * CO2eq_per_tchar * P_CO2;
+ 268  CarbonPremium_char(p) = CO2eq_per_tchar * P_CO2;
+ 269   
+ 270  *--- CSV: summary of base vs. with-carbon scenario ------------*
+ 271  * One line per plant p (you currently have only one).
+ 272  * This CSV is handy for Streamlit to show tables / comparisons.
+ 273   
+ 274  File fC /plant_first_payable_with_carbon.csv/ ;
+ 275  put fC ;
+ 276  put 'plant,'
+ 277      'P_CO2_EUR_per_tCO2,'
+ 278      'CO2eq_per_tchar_tCO2pt,'
+ 279      'P_chip_DM_base_EURptDM,'
+ 280      'P_chip_asrec_base_EURpt,'
+ 281      'P_chip_DM_withC_EURptDM,'
+ 282      'P_chip_asrec_withC_EURpt,'
+ 283      'CharOutput_yr_t,'
+ 284      'CO2_balance_yr_tCO2,'
+ 285      'CO2_rev_yr_EUR'
+ 286      / ;
+ 287   
+ 288  loop(p,
+ 289    put p.tl:0 ','
+ 290        P_CO2:0:2 ','
+ 291        CO2eq_per_tchar:0:2 ','
+ 292        P_chip_payable(p):0:2 ','
+ 293        P_chip_payable_asrec(p):0:2 ','
+ 294        P_chip_payable_DM_wC(p):0:2 ','
+ 295        P_chip_payable_asrec_wC(p):0:2 ','
+ 296        CharOutput_yr(p):0:2 ','
+ 297        CO2_balance_yr(p):0:2 ','
+ 298        CO2_rev_yr(p):0:0 / ;
+ 299  );
+ 300  putclose fC ;
+ 301   
+ 302  *==============================================================*
+ 303  * END OF DOWNSTREAM & CARBON EXTENSION                         *
+ 304  *==============================================================*
+ 305   
+ 306   
+
+
+COMPILATION TIME     =        0.000 SECONDS      3 MB  49.6.1 55d34574 WEX-WEI
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 11/18/25 13:58:22 Page 2
+G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
+E x e c u t i o n
+
+
+----    137 PARAMETER P_chip_payable  EUR/t DM, breakeven w.r.t. MarginTarget
+
+j1 31.480
+
+
+----    137 PARAMETER P_chip_payable_asrec  EUR/t as-received at MC_asrec
+
+j1 23.610
+
+
+----    137 PARAMETER BE_radius  km one-way
+
+       tractor       truck
+
+j1      42.191      70.974
+
+
+----    137 PARAMETER PayableBudget_yr  EUR/yr payable to feedstock at capacity
+
+j1 75300.000
+
+
+----    137 PARAMETER CharOutput_yr  t/yr
+
+j1 598.000
+
+
+----    137 PARAMETER Qin_asrec_yr  t/yr as-received needed at capacity
+
+j1 3189.333
+
+
+**** PUT ERROR FOR FILE fC AT LINE 300: FILE CANNOT BE OPENED - NEW NAME INVENTED
+
+**** Open Error for PUTFILE RC=13 FN=C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\plant_first_payable_with_carbon.csv
+**** Msg=Permission denied
+**** New file name used is C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\gams6.put
+
+**** REPORT FILE SUMMARY
+
+fo C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\plant_first_payable_radius_j1.csv
+fdist C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\distance_payable_curve_j1.csv
+fpchar C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\payable_vs_biochar_j1.csv
+fC C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\gams6.put
+
+
+EXECUTION TIME       =        0.062 SECONDS      7 MB  49.6.1 55d34574 WEX-WEI
+
+
+USER: Large MUD - 20 User License                    S231215|0002AN-WIN
+      Leibniz-Zentrum fuer Agrarlandschaftsforschung (ZALF) e. V.DC8734
+      License for teaching and research at degree granting institutions
+
+
+**** FILE SUMMARY
+
+Input      C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Plantflip3.gms
+Output     C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\Plantflip3.lst
