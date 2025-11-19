@@ -1,4 +1,4 @@
-GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 11/18/25 13:58:22 Page 1
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 11/19/25 09:24:07 Page 1
 G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
 C o m p i l a t i o n
 
@@ -238,8 +238,8 @@ C o m p i l a t i o n
  233  *==============================================================*
  234   
  235  Scalar
- 236     P_CO2            "Carbon price (EUR/t CO2-eq) - EDIT LATER OR OVERRIDE IN STREAMLIT" / 80 /
- 237     CO2eq_per_tchar  "Net CO2-eq per t biochar (t CO2-eq / t char; sign can be +/-)"    / 2.6 / ;
+ 236     P_CO2           "Carbon price (EUR/t CO2-eq) - EDIT LATER OR OVERRIDE IN STREAMLIT" / 80 /
+ 237     CO2eq_per_tchar "Net CO2-eq per t biochar (t CO2-eq / t char; from Pyro-ClinX brochure, 8000 h/a)" / 2.87 / ;
  238   
  239  *--- Annual CO2 balance and carbon revenue --------------------*
  240  Parameter
@@ -309,10 +309,109 @@ C o m p i l a t i o n
  304  *==============================================================*
  305   
  306   
+ 307  *==============================================================*
+ 308  *  PLANT GROSS MARGIN VS PAYABLE CHIP PRICE (POSTPROCESSING)   *
+ 309  *==============================================================*
+ 310   
+ 311  Set kP "grid points for payable chip price" / kP1*kP21 / ;
+ 312   
+ 313  Parameter
+ 314     Pchip_grid(p,kP)      "test payable chip prices [EUR/t DM]"
+ 315     GM_base_h(p,kP)       "plant gross margin [EUR/h] - no carbon"
+ 316     GM_withC_h(p,kP)      "plant gross margin [EUR/h] - incl. carbon"
+ 317     GM_base_yr(p,kP)      "plant gross margin [EUR/a] - no carbon"
+ 318     GM_withC_yr(p,kP)     "plant gross margin [EUR/a] - incl. carbon" ;
+ 319   
+ 320  * This must be a PARAMETER (indexed by p), not a scalar
+ 321  Parameter GM_rev_CO2_h(p) "EUR/h carbon revenue (CO2_rev_yr / Hop_year)" ;
+ 322  GM_rev_CO2_h(p) = CO2_rev_yr(p) / Hop_year ;
+ 323   
+ 324  * These must also be PARAMETERS (indexed by p)
+ 325  Parameter Pchip_min(p), Pchip_max(p) ;
+ 326   
+ 327  * Price range: from 60% of base payable to 140% of with-carbon payable
+ 328  Pchip_min(p) = 0.6 * P_chip_payable(p) ;
+ 329  Pchip_max(p) = 1.4 * P_chip_payable_DM_wC(p) ;
+ 330   
+ 331  Loop((p,kP),
+ 332     Pchip_grid(p,kP) =
+ 333         Pchip_min(p)
+ 334       + (ord(kP)-1)*(Pchip_max(p) - Pchip_min(p))/(card(kP)-1) ;
+ 335   
+ 336   
+ 337     GM_base_h(p,kP) =
+ 338         Rev(p)
+ 339       - (Clab(p) + Com(p) + Cbuy(p))
+ 340       - Pchip_grid(p,kP) * Qin_DM_h(p) ;
+ 341   
+ 342   
+ 343     GM_withC_h(p,kP) =
+ 344         Rev(p) + GM_rev_CO2_h(p)
+ 345       - (Clab(p) + Com(p) + Cbuy(p))
+ 346       - Pchip_grid(p,kP) * Qin_DM_h(p) ;
+ 347   
+ 348     GM_base_yr(p,kP)  = GM_base_h(p,kP)  * Hop_year ;
+ 349     GM_withC_yr(p,kP) = GM_withC_h(p,kP) * Hop_year ;
+ 350  );
+ 351   
+ 352  File fGM /plant_profit_curve_j1.csv/ ; put fGM ;
+ 353  put 'plant,P_chip_EUR_per_tDM,GM_base_EUR_per_yr,GM_withC_EUR_per_yr' / ;
+ 354   
+ 355  loop((p,kP),
+ 356     put p.tl:0 ','
+ 357         Pchip_grid(p,kP):0:2 ','
+ 358         GM_base_yr(p,kP):0:0 ','
+ 359         GM_withC_yr(p,kP):0:0 / ;
+ 360  );
+ 361   
+ 362  putclose fGM ;
+ 363  *==============================================================*
+ 364  *  END PLANT GROSS MARGIN CURVES                               *
+ 365  *==============================================================*
+ 366   
+ 367  *==============================================================*
+ 368  *  FARM MARGIN VS DISTANCE (AS-RECEIVED BASIS)                 *
+ 369  *  - Uses Cost_asrec(r,m) from your existing distance curve    *
+ 370  *  - Compares base vs with-carbon plant gate prices            *
+ 371  *==============================================================*
+ 372   
+ 373  Set scen / base, withC / ;
+ 374   
+ 375  Parameter
+ 376     Pgate_asrec_scen(scen)      "plant gate price [EUR/t as-rec] per scenario"
+ 377     GM_farm_asrec(r,m,scen)     "farm margin [EUR/t as-rec] for each distance and mode" ;
+ 378   
+ 379  * Gate prices per scenario (as already computed)
+ 380  Pgate_asrec_scen('base')  = P_chip_payable_asrec('j1') ;
+ 381  Pgate_asrec_scen('withC') = P_chip_payable_asrec_wC('j1') ;
+ 382   
+ 383  * Farm margin = gate price - delivered cost (as-received)
+ 384  Loop((r,m,scen),
+ 385     GM_farm_asrec(r,m,scen) =
+ 386        Pgate_asrec_scen(scen) - Cost_asrec(r,m) ;
+ 387  );
+ 388   
+ 389  File fFarm /farm_margin_vs_distance_j1.csv/ ; put fFarm ;
+ 390  put 'km,mode,scenario,gate_price_asrec_eurpt,delivered_cost_asrec_eurpt,GM_farm_asrec_eurpt' / ;
+ 391   
+ 392  loop((r,m,scen),
+ 393     put km(r):0:0 ','
+ 394         m.tl:0 ','
+ 395         scen.tl:0 ','
+ 396         Pgate_asrec_scen(scen):0:2 ','
+ 397         Cost_asrec(r,m):0:2 ','
+ 398         GM_farm_asrec(r,m,scen):0:2 / ;
+ 399  );
+ 400   
+ 401  putclose fFarm ;
+ 402  *==============================================================*
+ 403  *  END FARM MARGIN CURVES                                      *
+ 404  *==============================================================*
+ 405   
 
 
-COMPILATION TIME     =        0.000 SECONDS      3 MB  49.6.1 55d34574 WEX-WEI
-GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 11/18/25 13:58:22 Page 2
+COMPILATION TIME     =        0.015 SECONDS      3 MB  49.6.1 55d34574 WEX-WEI
+GAMS 49.6.1  55d34574 May 28, 2025          WEX-WEI x86 64bit/MS Windows - 11/19/25 09:24:07 Page 2
 G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m
 E x e c u t i o n
 
@@ -349,21 +448,17 @@ j1 598.000
 j1 3189.333
 
 
-**** PUT ERROR FOR FILE fC AT LINE 300: FILE CANNOT BE OPENED - NEW NAME INVENTED
-
-**** Open Error for PUTFILE RC=13 FN=C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\plant_first_payable_with_carbon.csv
-**** Msg=Permission denied
-**** New file name used is C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\gams6.put
-
 **** REPORT FILE SUMMARY
 
 fo C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\plant_first_payable_radius_j1.csv
 fdist C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\distance_payable_curve_j1.csv
 fpchar C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\payable_vs_biochar_j1.csv
-fC C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\gams6.put
+fC C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\plant_first_payable_with_carbon.csv
+fGM C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\plant_profit_curve_j1.csv
+fFarm C:\Users\ronnie\Documents\GAMS\Studio\workspace\Pyro\farm_margin_vs_distance_j1.csv
 
 
-EXECUTION TIME       =        0.062 SECONDS      7 MB  49.6.1 55d34574 WEX-WEI
+EXECUTION TIME       =        0.032 SECONDS      9 MB  49.6.1 55d34574 WEX-WEI
 
 
 USER: Large MUD - 20 User License                    S231215|0002AN-WIN
