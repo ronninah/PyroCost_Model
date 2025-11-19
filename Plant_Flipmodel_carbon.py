@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import altair as alt
 import streamlit as st
+import matplotlib.pyplot as plt
 
 # ------------------------------------------------
 # Page config
@@ -66,7 +67,7 @@ DEFAULTS = dict(
 
     # Carbon extension (can be changed in sidebar)
     P_CO2=80.0,               # €/t CO2-eq
-    CO2eq_per_tchar=2.6       # t CO2-eq per t char  (placeholder)
+    CO2eq_per_tchar=2.87       # t CO2-eq per t char  (placeholder)
 )
 
 WORKDIR = os.path.dirname(__file__)
@@ -286,10 +287,13 @@ kpis = compute_kpis()
 # ------------------------------------------------
 # Tabs
 # ------------------------------------------------
-tab1, tab2, tab3 = st.tabs([
+
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Distance & delivered chip cost",
     "Biochar price & break-even radius",
-    "Carbon credits & premiums"
+    "Carbon credits & premiums",
+    "Plant profit vs payable price",
+    "Farm margin vs distance"
 ])
 
 # ------------------------------------------------
@@ -639,11 +643,139 @@ with tab3:
         )
 
     st.info(
-        "Note: CO₂eq_per_tchar is currently a **placeholder** based on simple carbon content "
-        "assumptions. It should later be replaced with values from a detailed LCA for the "
-        "specific plant and biochar system."
-    )
+    "CO₂eq_per_tchar is currently set to match the Pyro-ClinX brochure (8000 h/year). "
+    "You can still overwrite it in the sidebar or later replace it with values from a detailed LCA."
+)
 
+
+# ------------------------------------------------
+# TAB 4: Plant gross margin vs payable chip price
+# ------------------------------------------------
+with tab4:
+    st.subheader("4. Plant gross margin vs payable chip price")
+
+    # Path to CSV written by GAMS (Plantflip3.gms)
+    gm_path = os.path.join(WORKDIR, "plant_profit_curve_j1.csv")
+
+    if not os.path.exists(gm_path):
+        st.warning(
+            "File 'plant_profit_curve_j1.csv' not found in the working directory. "
+            "Run the GAMS model (Plantflip3.gms) first so this file is generated."
+        )
+    else:
+        df_gm = pd.read_csv(gm_path)
+
+        colL, colR = st.columns([2, 1])
+
+        with colR:
+            st.markdown("**Data preview (first rows)**")
+            st.dataframe(df_gm.head())
+
+            scale_k = st.checkbox(
+                "Show gross margin in thousand €/year (k€/yr)", value=True
+            )
+
+        # Prepare plot
+        x = df_gm["P_chip_EUR_per_tDM"]
+        if scale_k:
+            y_base = df_gm["GM_base_EUR_per_yr"] / 1000.0
+            y_withC = df_gm["GM_withC_EUR_per_yr"] / 1000.0
+            ylabel = "Plant gross margin [k€/yr]"
+        else:
+            y_base = df_gm["GM_base_EUR_per_yr"]
+            y_withC = df_gm["GM_withC_EUR_per_yr"]
+            ylabel = "Plant gross margin [€/yr]"
+
+        with colL:
+            fig, ax = plt.subplots()
+            ax.plot(x, y_base, label="Without carbon revenue")
+            ax.plot(x, y_withC, linestyle="--", label="With carbon revenue")
+            ax.axhline(0.0, linestyle=":", linewidth=1)
+
+            ax.set_xlabel("Payable chip price at plant gate [€/t DM]")
+            ax.set_ylabel(ylabel)
+            ax.set_title("Plant gross margin vs payable chip price")
+            ax.grid(True, linestyle=":", linewidth=0.5)
+            ax.legend()
+
+            st.pyplot(fig)
+
+        st.info(
+            "Each line shows plant gross margin as a function of the chip price the plant pays at "
+            "the gate. Where a line crosses 0 on the y-axis is the maximum payable price for that "
+            "scenario (with or without carbon revenue)."
+        )
+
+
+# ------------------------------------------------
+# TAB 5: Farm margin vs distance (tractor / truck)
+# ------------------------------------------------
+with tab5:
+    st.subheader("5. Farm margin vs distance")
+
+    farm_path = os.path.join(WORKDIR, "farm_margin_vs_distance_j1.csv")
+
+    if not os.path.exists(farm_path):
+        st.warning(
+            "File 'farm_margin_vs_distance_j1.csv' not found in the working directory. "
+            "Run the GAMS model (Plantflip3.gms) first so this file is generated."
+        )
+    else:
+        df_farm = pd.read_csv(farm_path)
+
+        colL, colR = st.columns([2, 1])
+
+        with colR:
+            st.markdown("**Plot settings**")
+            mode_sel = st.selectbox("Transport mode", ["tractor", "truck"])
+            scenarios_sel = st.multiselect(
+                "Scenarios",
+                options=["base", "withC"],
+                default=["base", "withC"]
+            )
+
+            show_zero = st.checkbox("Show zero-margin reference line", value=True)
+
+            st.markdown("**Example rows (selected mode)**")
+            st.dataframe(df_farm[df_farm["mode"] == mode_sel].head())
+
+        with colL:
+            fig, ax = plt.subplots()
+
+            for scen in scenarios_sel:
+                sub = df_farm[
+                    (df_farm["mode"] == mode_sel) &
+                    (df_farm["scenario"] == scen)
+                ]
+                if sub.empty:
+                    continue
+                ax.plot(
+                    sub["km"],
+                    sub["GM_farm_asrec_eurpt"],
+                    label=f"{mode_sel}, {scen}"
+                )
+
+            if show_zero:
+                ax.axhline(0.0, linestyle=":", linewidth=1)
+
+            ax.set_xlabel("One-way distance from plant [km]")
+            ax.set_ylabel("Farm margin [€/t chips, as-received]")
+            ax.set_title(f"Farm margin vs distance ({mode_sel})")
+            ax.grid(True, linestyle=":", linewidth=0.5)
+            ax.legend()
+
+            st.pyplot(fig)
+
+        st.info(
+            "For the chosen transport mode, this graph shows how the farm's margin per tonne of "
+            "chips (as delivered to the plant) decreases with distance. Where a line crosses zero "
+            "marks the farm-side break-even radius for that gate price (base vs with-carbon)."
+        )
+
+
+
+
+    
 # ------------------------------------------------
 # KPIs panel at bottom
 # ------------------------------------------------
@@ -662,3 +794,4 @@ kpi_cols2[0].metric("Annual chip requirement (t/year, as-received)",
                     f"{kpis['Qin_asrec_yr']:.0f}")
 kpi_cols2[1].metric("Break-even radius tractor (km)", f"{kpis['BE_trac']:.1f}")
 kpi_cols2[2].metric("Break-even radius truck (km)", f"{kpis['BE_truck']:.1f}")
+

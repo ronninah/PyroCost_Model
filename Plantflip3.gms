@@ -233,8 +233,8 @@ putclose fpchar ;
 *==============================================================*
 
 Scalar
-   P_CO2            "Carbon price (EUR/t CO2-eq) - EDIT LATER OR OVERRIDE IN STREAMLIT" / 80 /
-   CO2eq_per_tchar  "Net CO2-eq per t biochar (t CO2-eq / t char; sign can be +/-)"    / 2.6 / ;
+   P_CO2           "Carbon price (EUR/t CO2-eq) - EDIT LATER OR OVERRIDE IN STREAMLIT" / 80 /
+   CO2eq_per_tchar "Net CO2-eq per t biochar (t CO2-eq / t char; from Pyro-ClinX brochure, 8000 h/a)" / 2.87 / ;
 
 *--- Annual CO2 balance and carbon revenue --------------------*
 Parameter
@@ -303,4 +303,103 @@ putclose fC ;
 * END OF DOWNSTREAM & CARBON EXTENSION                         *
 *==============================================================*
 
+
+*==============================================================*
+*  PLANT GROSS MARGIN VS PAYABLE CHIP PRICE (POSTPROCESSING)   *
+*==============================================================*
+
+Set kP "grid points for payable chip price" / kP1*kP21 / ;
+
+Parameter
+   Pchip_grid(p,kP)      "test payable chip prices [EUR/t DM]"
+   GM_base_h(p,kP)       "plant gross margin [EUR/h] - no carbon"
+   GM_withC_h(p,kP)      "plant gross margin [EUR/h] - incl. carbon"
+   GM_base_yr(p,kP)      "plant gross margin [EUR/a] - no carbon"
+   GM_withC_yr(p,kP)     "plant gross margin [EUR/a] - incl. carbon" ;
+
+* This must be a PARAMETER (indexed by p), not a scalar
+Parameter GM_rev_CO2_h(p) "EUR/h carbon revenue (CO2_rev_yr / Hop_year)" ;
+GM_rev_CO2_h(p) = CO2_rev_yr(p) / Hop_year ;
+
+* These must also be PARAMETERS (indexed by p)
+Parameter Pchip_min(p), Pchip_max(p) ;
+
+* Price range: from 60% of base payable to 140% of with-carbon payable
+Pchip_min(p) = 0.6 * P_chip_payable(p) ;
+Pchip_max(p) = 1.4 * P_chip_payable_DM_wC(p) ;
+
+Loop((p,kP),
+   Pchip_grid(p,kP) =
+       Pchip_min(p)
+     + (ord(kP)-1)*(Pchip_max(p) - Pchip_min(p))/(card(kP)-1) ;
+
+ 
+   GM_base_h(p,kP) =
+       Rev(p)
+     - (Clab(p) + Com(p) + Cbuy(p))
+     - Pchip_grid(p,kP) * Qin_DM_h(p) ;
+
+
+   GM_withC_h(p,kP) =
+       Rev(p) + GM_rev_CO2_h(p)
+     - (Clab(p) + Com(p) + Cbuy(p))
+     - Pchip_grid(p,kP) * Qin_DM_h(p) ;
+
+   GM_base_yr(p,kP)  = GM_base_h(p,kP)  * Hop_year ;
+   GM_withC_yr(p,kP) = GM_withC_h(p,kP) * Hop_year ;
+);
+
+File fGM /plant_profit_curve_j1.csv/ ; put fGM ;
+put 'plant,P_chip_EUR_per_tDM,GM_base_EUR_per_yr,GM_withC_EUR_per_yr' / ;
+
+loop((p,kP),
+   put p.tl:0 ','
+       Pchip_grid(p,kP):0:2 ','
+       GM_base_yr(p,kP):0:0 ','
+       GM_withC_yr(p,kP):0:0 / ;
+);
+
+putclose fGM ;
+*==============================================================*
+*  END PLANT GROSS MARGIN CURVES                               *
+*==============================================================*
+
+*==============================================================*
+*  FARM MARGIN VS DISTANCE (AS-RECEIVED BASIS)                 *
+*  - Uses Cost_asrec(r,m) from your existing distance curve    *
+*  - Compares base vs with-carbon plant gate prices            *
+*==============================================================*
+
+Set scen / base, withC / ;
+
+Parameter
+   Pgate_asrec_scen(scen)      "plant gate price [EUR/t as-rec] per scenario"
+   GM_farm_asrec(r,m,scen)     "farm margin [EUR/t as-rec] for each distance and mode" ;
+
+* Gate prices per scenario (as already computed)
+Pgate_asrec_scen('base')  = P_chip_payable_asrec('j1') ;
+Pgate_asrec_scen('withC') = P_chip_payable_asrec_wC('j1') ;
+
+* Farm margin = gate price - delivered cost (as-received)
+Loop((r,m,scen),
+   GM_farm_asrec(r,m,scen) =
+      Pgate_asrec_scen(scen) - Cost_asrec(r,m) ;
+);
+
+File fFarm /farm_margin_vs_distance_j1.csv/ ; put fFarm ;
+put 'km,mode,scenario,gate_price_asrec_eurpt,delivered_cost_asrec_eurpt,GM_farm_asrec_eurpt' / ;
+
+loop((r,m,scen),
+   put km(r):0:0 ','
+       m.tl:0 ','
+       scen.tl:0 ','
+       Pgate_asrec_scen(scen):0:2 ','
+       Cost_asrec(r,m):0:2 ','
+       GM_farm_asrec(r,m,scen):0:2 / ;
+);
+
+putclose fFarm ;
+*==============================================================*
+*  END FARM MARGIN CURVES                                      *
+*==============================================================*
 
