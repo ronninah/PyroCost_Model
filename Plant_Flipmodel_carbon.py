@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import altair as alt
 import streamlit as st
-import matplotlib.pyplot as plt
+
 
 # ------------------------------------------------
 # Page config
