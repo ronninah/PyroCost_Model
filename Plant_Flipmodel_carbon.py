@@ -292,8 +292,9 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Distance & delivered chip cost",
     "Biochar price & break-even radius",
     "Carbon credits & premiums",
-    "Plant profit vs payable price",
+    "Plant profit vs payable chip price",
     "Farm margin vs distance"
+
 ])
 
 # ------------------------------------------------
@@ -649,132 +650,193 @@ with tab3:
 
 
 # ------------------------------------------------
-# TAB 4: Plant gross margin vs payable chip price
+# TAB 4: Plant gross margin vs payable chip price (from GAMS CSV)
 # ------------------------------------------------
 with tab4:
-    st.subheader("4. Plant gross margin vs payable chip price")
+    st.subheader("4. Plant gross margin vs payable chip price (GAMS results)")
 
-    # Path to CSV written by GAMS (Plantflip3.gms)
-    gm_path = os.path.join(WORKDIR, "plant_profit_curve_j1.csv")
+    st.info(
+        "This tab reads **fixed results from GAMS** "
+        "(`plant_profit_curve_j1.csv`). It does **not** react to the sidebar sliders. "
+        "To change these curves, rerun the GAMS model (`Plantflip3.gms`) so it rewrites "
+        "the CSV file, then reload this app."
+    )
 
-    if not os.path.exists(gm_path):
-        st.warning(
-            "File 'plant_profit_curve_j1.csv' not found in the working directory. "
-            "Run the GAMS model (Plantflip3.gms) first so this file is generated."
+    csv_path_profit = os.path.join(WORKDIR, "plant_profit_curve_j1.csv")
+
+    if not os.path.exists(csv_path_profit):
+        st.error(f"CSV file not found: {csv_path_profit}")
+        st.write(
+            "Please run the GAMS file `Plantflip3.gms` so that it exports "
+            "`plant_profit_curve_j1.csv`, then reload this app."
         )
     else:
-        df_gm = pd.read_csv(gm_path)
+        df_profit = pd.read_csv(csv_path_profit)
 
-        colL, colR = st.columns([2, 1])
+        st.caption("Source: `plant_profit_curve_j1.csv` from GAMS (Plantflip3.gms).")
+        st.dataframe(df_profit.head(), use_container_width=True)
 
-        with colR:
-            st.markdown("**Data preview (first rows)**")
-            st.dataframe(df_gm.head())
+        # Long format for Altair
+        df_profit_long = df_profit.melt(
+            id_vars=["plant", "P_chip_EUR_per_tDM"],
+            value_vars=["GM_base_EUR_per_yr", "GM_withC_EUR_per_yr"],
+            var_name="scenario",
+            value_name="GM_EUR_per_yr",
+        )
 
-            scale_k = st.checkbox(
-                "Show gross margin in thousand €/year (k€/yr)", value=True
+        # Clean scenario labels
+        df_profit_long["scenario"] = df_profit_long["scenario"].replace(
+            {
+                "GM_base_EUR_per_yr": "No carbon",
+                "GM_withC_EUR_per_yr": "With carbon",
+            }
+        )
+
+        # Fixed color mapping for scenarios (adjust hex codes to match your paper)
+        color_scale = alt.Scale(
+            domain=["No carbon", "With carbon"],
+            range=["#1f77b4", "#ff7f0e"]  # blue = no carbon, orange = with carbon
+        )
+
+        chart_profit = (
+            alt.Chart(df_profit_long)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X(
+                    "P_chip_EUR_per_tDM:Q",
+                    title="Payable chip price at plant gate (€/t dry matter)",
+                ),
+                y=alt.Y(
+                    "GM_EUR_per_yr:Q",
+                    title="Plant gross margin (€/year)",
+                ),
+                color=alt.Color(
+                    "scenario:N",
+                    title="Scenario",
+                    scale=color_scale,
+                ),
+                tooltip=[
+                    "plant",
+                    "P_chip_EUR_per_tDM",
+                    "scenario",
+                    "GM_EUR_per_yr",
+                ],
             )
+            .properties(height=380)
+        )
 
-        # Prepare plot
-        x = df_gm["P_chip_EUR_per_tDM"]
-        if scale_k:
-            y_base = df_gm["GM_base_EUR_per_yr"] / 1000.0
-            y_withC = df_gm["GM_withC_EUR_per_yr"] / 1000.0
-            ylabel = "Plant gross margin [k€/yr]"
-        else:
-            y_base = df_gm["GM_base_EUR_per_yr"]
-            y_withC = df_gm["GM_withC_EUR_per_yr"]
-            ylabel = "Plant gross margin [€/yr]"
-
-        with colL:
-            fig, ax = plt.subplots()
-            ax.plot(x, y_base, label="Without carbon revenue")
-            ax.plot(x, y_withC, linestyle="--", label="With carbon revenue")
-            ax.axhline(0.0, linestyle=":", linewidth=1)
-
-            ax.set_xlabel("Payable chip price at plant gate [€/t DM]")
-            ax.set_ylabel(ylabel)
-            ax.set_title("Plant gross margin vs payable chip price")
-            ax.grid(True, linestyle=":", linewidth=0.5)
-            ax.legend()
-
-            st.pyplot(fig)
+        st.altair_chart(chart_profit, use_container_width=True)
 
         st.info(
-            "Each line shows plant gross margin as a function of the chip price the plant pays at "
-            "the gate. Where a line crosses 0 on the y-axis is the maximum payable price for that "
-            "scenario (with or without carbon revenue)."
+            "Curve labels:\n"
+            "- **No carbon** = gross margin from the plant economics only.\n"
+            "- **With carbon** = same plant plus annual carbon-credit revenue from GAMS.\n"
+            "All values are taken directly from the GAMS output file."
         )
 
 
 # ------------------------------------------------
-# TAB 5: Farm margin vs distance (tractor / truck)
+# TAB 5: Farm margin vs distance (from GAMS CSV)
 # ------------------------------------------------
 with tab5:
-    st.subheader("5. Farm margin vs distance")
+    st.subheader("5. Farm margin vs distance (GAMS results)")
 
-    farm_path = os.path.join(WORKDIR, "farm_margin_vs_distance_j1.csv")
+    st.info(
+        "This tab reads **fixed results from GAMS** "
+        "(`farm_margin_vs_distance_j1.csv`). It does **not** react to the sidebar sliders. "
+        "To change these curves, rerun the GAMS model (`Plantflip3.gms`) so it rewrites "
+        "the CSV file, then reload this app."
+    )
 
-    if not os.path.exists(farm_path):
-        st.warning(
-            "File 'farm_margin_vs_distance_j1.csv' not found in the working directory. "
-            "Run the GAMS model (Plantflip3.gms) first so this file is generated."
+    csv_path_farm = os.path.join(WORKDIR, "farm_margin_vs_distance_j1.csv")
+
+    if not os.path.exists(csv_path_farm):
+        st.error(f"CSV file not found: {csv_path_farm}")
+        st.write(
+            "Please run the GAMS file `Plantflip3.gms` so that it exports "
+            "`farm_margin_vs_distance_j1.csv`, then reload this app."
         )
     else:
-        df_farm = pd.read_csv(farm_path)
+        df_farm = pd.read_csv(csv_path_farm)
 
-        colL, colR = st.columns([2, 1])
+        st.caption("Source: `farm_margin_vs_distance_j1.csv` from GAMS (Plantflip3.gms).")
+        st.dataframe(df_farm.head(), use_container_width=True)
 
-        with colR:
-            st.markdown("**Plot settings**")
-            mode_sel = st.selectbox("Transport mode", ["tractor", "truck"])
-            scenarios_sel = st.multiselect(
+        col_ctrl, col_plot = st.columns([1, 2])
+
+        with col_ctrl:
+            modes_farm = st.multiselect(
+                "Transport modes (farm margin plot)",
+                ["tractor", "truck"],
+                default=["tractor", "truck"],
+                key="modes_tab5",
+            )
+            scen_sel = st.multiselect(
                 "Scenarios",
-                options=["base", "withC"],
-                default=["base", "withC"]
+                ["base", "withC"],
+                default=["base", "withC"],
+                key="scen_tab5",
             )
 
-            show_zero = st.checkbox("Show zero-margin reference line", value=True)
+        df_plot = df_farm.copy()
+        df_plot = df_plot[df_plot["mode"].isin(modes_farm)]
+        df_plot = df_plot[df_plot["scenario"].isin(scen_sel)]
 
-            st.markdown("**Example rows (selected mode)**")
-            st.dataframe(df_farm[df_farm["mode"] == mode_sel].head())
+        if df_plot.empty:
+            with col_plot:
+                st.warning("No data to plot for the selected modes/scenarios.")
+        else:
+            # Fixed colors for modes, fixed dash for scenarios
+            mode_color_scale = alt.Scale(
+                domain=["tractor", "truck"],
+                range=["#1f77b4", "#ff7f0e"]  # e.g. blue = tractor, orange = truck
+            )
 
-        with colL:
-            fig, ax = plt.subplots()
+            dash_scale = alt.Scale(
+                domain=["base", "withC"],
+                range=[[], [4, 4]]  # solid = base, dashed = with carbon
+            )
 
-            for scen in scenarios_sel:
-                sub = df_farm[
-                    (df_farm["mode"] == mode_sel) &
-                    (df_farm["scenario"] == scen)
-                ]
-                if sub.empty:
-                    continue
-                ax.plot(
-                    sub["km"],
-                    sub["GM_farm_asrec_eurpt"],
-                    label=f"{mode_sel}, {scen}"
+            farm_chart = (
+                alt.Chart(df_plot)
+                .mark_line()
+                .encode(
+                    x=alt.X("km:Q", title="Distance from farm to plant (km)"),
+                    y=alt.Y(
+                        "GM_farm_asrec_eurpt:Q",
+                        title="Farm margin (€/t chips, as-received)",
+                    ),
+                    color=alt.Color(
+                        "mode:N",
+                        title="Mode",
+                        scale=mode_color_scale,
+                    ),
+                    strokeDash=alt.StrokeDash(
+                        "scenario:N",
+                        title="Scenario",
+                        scale=dash_scale,
+                    ),
+                    tooltip=[
+                        "km",
+                        "mode",
+                        "scenario",
+                        "gate_price_asrec_eurpt",
+                        "delivered_cost_asrec_eurpt",
+                        "GM_farm_asrec_eurpt",
+                    ],
                 )
-
-            if show_zero:
-                ax.axhline(0.0, linestyle=":", linewidth=1)
-
-            ax.set_xlabel("One-way distance from plant [km]")
-            ax.set_ylabel("Farm margin [€/t chips, as-received]")
-            ax.set_title(f"Farm margin vs distance ({mode_sel})")
-            ax.grid(True, linestyle=":", linewidth=0.5)
-            ax.legend()
-
-            st.pyplot(fig)
+                .properties(height=380)
+            )
+            with col_plot:
+                st.altair_chart(farm_chart, use_container_width=True)
 
         st.info(
-            "For the chosen transport mode, this graph shows how the farm's margin per tonne of "
-            "chips (as delivered to the plant) decreases with distance. Where a line crosses zero "
-            "marks the farm-side break-even radius for that gate price (base vs with-carbon)."
+            "Farm margin is defined here exactly as in the GAMS CSV: "
+            "`GM_farm_asrec_eurpt = gate_price_asrec_eurpt − delivered_cost_asrec_eurpt` "
+            "(€/t chips, as-received).\n\n"
+            "- **Mode color**: blue = tractor, orange = truck.\n"
+            "- **Line style**: solid = base gate price, dashed = gate price including carbon value."
         )
-
-
-
-
     
 # ------------------------------------------------
 # KPIs panel at bottom
